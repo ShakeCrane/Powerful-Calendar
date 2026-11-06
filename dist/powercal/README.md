@@ -1,5 +1,19 @@
 # PowerCal Functional Preview
 
+## Latest validated build — 2026-11-07
+
+- APK: `PowerCal-Functional-Preview-2026-11-07-05514a12.apk`
+- SHA-256: `CF310827CA4C3A7989DB79A5D35F6F2755F2AD01E7601D28B40CA271C74492CB`
+- Built from code commit `05514a12c3cf6c0b62bfe2daad04fbbdf433097f`; package `dev.powerfulcalendar`, version `0.9.5-rc.1` (`905`), Debug.
+- Default package: one `powercal-clear-default.pcskin`; source/APK asset SHA-256 `78C13F92BB2878A559CCD57FE64FEA7F22D2137460620139C69155C7CBF5BB7E`.
+- Installation, smoke results and limitations: [PowerCal Functional Preview 2026-11-07](PowerCal-Functional-Preview-2026-11-07.md).
+
+This preview is for isolated QA. It is not the finished Native 0.9.5 visual migration or a public release. Product Cutover remains `HOLD`.
+
+---
+
+## Historical build — 2026-11-05
+
 内部功能预览 APK，构建于 **2026-11-05**。用于隔离测试和试用，不代表跨 OEM 或正式发行签核。
 
 - APK：`PowerCal-Functional-Preview-2026-11-05.apk`

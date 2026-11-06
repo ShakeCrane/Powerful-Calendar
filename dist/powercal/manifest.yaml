@@ -74,3 +74,22 @@ q05_release_candidate:
   product_cutover: HOLD
   device: PowerCal_Wave2_QA35_20261104 / emulator-5554 / API 35
   evidence_dir: .local/android-test/reports/Q-05-20261105/manifest.md
+functional_preview_2026_11_07:
+  artifact: PowerCal Functional Preview
+  created: 2026-11-07
+  apk: PowerCal-Functional-Preview-2026-11-07-05514a12.apk
+  apk_sha256: CF310827CA4C3A7989DB79A5D35F6F2755F2AD01E7601D28B40CA271C74492CB
+  apk_bytes: 67983743
+  application_id: dev.powerfulcalendar
+  version_name: 0.9.5-rc.1
+  version_code: 905
+  build_type: debug
+  build_head: 05514a12c3cf6c0b62bfe2daad04fbbdf433097f
+  default_skin_id: powercal-clear-default
+  default_skin_sha256: 78C13F92BB2878A559CCD57FE64FEA7F22D2137460620139C69155C7CBF5BB7E
+  apk_pcskin_count: 1
+  source_asset_matches_apk: true
+  status: functional_preview_delivered
+  product_cutover: HOLD
+  evidence_dir: .local/android-test/reports/functional-preview-20261107/manifest.md
+  device: PowerCal_Wave2_QA35_20261104 / emulator-5556 / API 35

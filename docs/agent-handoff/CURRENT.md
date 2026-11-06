@@ -9,8 +9,8 @@ OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
 LATEST_CODE_HEAD: 05514a12c3cf6c0b62bfe2daad04fbbdf433097f (Native 0.9.5 Timeline pinch parity slice)
-LATEST_VERIFIED_HEAD: 05514a12c3cf6c0b62bfe2daad04fbbdf433097f (serial Gradle PASS; 987/987 JVM; final API 35 Native/Web pinch runs 1/1 each; Studio Python 90/90, catalog 9/9, browser E2E PASS; final assemble and package verification PASS)
-CURRENT_TASK: FUNCTIONAL_PREVIEW_DELIVERY
+LATEST_VERIFIED_HEAD: 05514a12c3cf6c0b62bfe2daad04fbbdf433097f (serial Gradle PASS; 987/987 JVM; API 35 main-flow checks; Studio Python 90/90, catalog 9/9, browser E2E PASS; official package verification PASS)
+CURRENT_TASK: NATIVE_095_DRAFT_DECK_VISUAL_PARITY
 TASK_STATUS: IN_PROGRESS
 PRODUCT_CUTOVER: HOLD
 TASK_BASE_HEAD: 05514a12c3cf6c0b62bfe2daad04fbbdf433097f
@@ -21,10 +21,22 @@ NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
 LAST_COMPLETED_TASK: Native 0.9.5 Timeline two-finger vertical pinch and zoom-label parity (narrow PASS; entire Timeline remains PARTIAL)
 LAST_COMPLETED_COMMIT: 05514a12c3cf6c0b62bfe2daad04fbbdf433097f
-LAST_ATTEMPTED_TASK: PowerCal Functional Preview artifact and main-flow smoke (IN PROGRESS)
-LAST_ATTEMPTED_COMMIT: 05514a12c3cf6c0b62bfe2daad04fbbdf433097f (build baseline)
-NEXT_TASK: FUNCTIONAL_PREVIEW_DELIVERY
-NEXT_ACTION: Preserve the APK built from 05514a12c3cf6c0b62bfe2daad04fbbdf433097f under dist/powercal, record package/version/hash/install instructions and known limits, then run the major-flow smoke on a verified isolated API 35 QA AVD. Do not call it delivered until the app is installed and those flows have observable evidence. After delivery, resume the Native 0.9.5 full-page parity audit; do not infer whole-page parity from the pinch slice.
+LAST_ATTEMPTED_TASK: PowerCal Functional Preview artifact and main-flow smoke (DELIVERED for isolated QA; AI chat send NOT TESTED after two identical trusted-touch automation failures)
+LAST_ATTEMPTED_COMMIT: 05514a12c3cf6c0b62bfe2daad04fbbdf433097f (APK build baseline)
+NEXT_TASK: NATIVE_095_DRAFT_DECK_VISUAL_PARITY
+NEXT_ACTION: On the verified API 35 Native reference AVD and Web QA AVD, use the same deterministic pending-draft fixture to compare NativeDraftDeckScreen with Web #pendingDeck. Migrate only the evidenced overlay/card hierarchy, scrim, geometry, and touch/scroll behavior through the existing Web v3 project and formal Host APIs; preserve draft/Core semantics, then run paired screenshot and Android touch checks. Keep the complete deck PARTIAL until its states are covered.
+FUNCTIONAL_PREVIEW_DELIVERY:
+  status: DELIVERED (isolated QA Functional Preview; not a public release and not full Native 0.9.5 parity)
+  apk: dist/powercal/PowerCal-Functional-Preview-2026-11-07-05514a12.apk
+  apk_sha256: CF310827CA4C3A7989DB79A5D35F6F2755F2AD01E7601D28B40CA271C74492CB
+  apk_bytes: 67983743
+  build_source_commit: 05514a12c3cf6c0b62bfe2daad04fbbdf433097f
+  package: dev.powerfulcalendar / 0.9.5-rc.1 / 905 / Debug
+  default_skin: powercal-clear-default; one .pcskin; source/APK SHA-256 78C13F92BB2878A559CCD57FE64FEA7F22D2137460620139C69155C7CBF5BB7E
+  device: PowerCal_Wave2_QA35_20261104 / emulator-5556 / API 35 / WebView 124.0.6367.219
+  verified: Gradle 987/987; Studio Python 90/90; binding catalog 9/9; all-kind create/edit, recurrence scopes, Memo paging/completion and two-phase process recovery instrumentation passed; Timeline/Month/Settings navigation observed
+  limitation: AI page entry only; chat-send instrumentation failed twice before Host request at trusted #chatSend pointerdown; no live provider used. Import/export, permission change, OEM reminder delivery, TalkBack and physical-device tests not rerun.
+  evidence: dist/powercal/PowerCal-Functional-Preview-2026-11-07.md; .local/android-test/reports/functional-preview-20261107/manifest.md
 LATEST_SLICE_EVIDENCE:
   NATIVE_095_TIMELINE_PINCH_ZOOM:
     status: NARROW PASS (two-finger vertical pinch, ruler double-tap reset, repeat pinch, display rounding; entire Timeline remains PARTIAL)
