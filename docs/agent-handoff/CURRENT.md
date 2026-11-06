@@ -7,23 +7,23 @@ OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: a8da55828a3ba6d2f0b0c9d12f99ef8213ed08be (aligns the AI input maximum with frozen Native/Core 6000-code-unit boundary)
-LATEST_VERIFIED_HEAD: a8da55828a3ba6d2f0b0c9d12f99ef8213ed08be (serial full Gradle gate 983/983 JVM PASS; source boundaries, assembleDebug, lintDebug, AndroidTest compile/package PASS; isolated API 35 WebView boundary test 1/1 PASS; Studio bridge E2E and package verification PASS)
+LATEST_CODE_HEAD: 3ee4e79dd956a5e419adea8400be6ba76601a651 (bounded AI history pages, stale request guard, and reader anchoring)
+LATEST_VERIFIED_HEAD: 3ee4e79dd956a5e419adea8400be6ba76601a651 (serial full Gradle gate 987/987 JVM PASS; both source boundaries, assembleDebug, lintDebug, AndroidTest compile PASS; API 35 WebView history paging and Studio bridge E2E PASS)
 CURRENT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
 TASK_STATUS: IN_PROGRESS
 PRODUCT_CUTOVER: HOLD
 TASK_BASE_HEAD: e41246d7ebe5b329adbdc657bd3e53735695efa1
-WORKING_APK_SHA256: EF29297DF78D253E2A9C3ED03B24C81664CC23CD2A429874B8C7E348D3E3789B
-WORKING_DEFAULT_SKIN_SHA256: 2C503559A2CD7FAE57C2F40E529A05913D41B3192931458D17771AF2714F9E4E
+WORKING_APK_SHA256: acabdf1fbb3df1c998d6b743851b01f3289042aa1159c8871364ca21063614ae
+WORKING_DEFAULT_SKIN_SHA256: cd09d73f021fd34bc3ce56534df5b72e5ba26a8bba87e6e34dc3ffda2bc4e0c8
 WORKING_DEFAULT_SKIN_ID: powercal-clear-default
 NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; implementation and full parity remain IN PROGRESS)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
-LAST_COMPLETED_TASK: Native 0.9.5 AI chat composer maximum-length boundary (narrow PASS; AI page remains PARTIAL)
-LAST_COMPLETED_COMMIT: a8da55828a3ba6d2f0b0c9d12f99ef8213ed08be
+LAST_COMPLETED_TASK: Native 0.9.5 AI history paging, stale-request protection, and scroll anchoring (narrow PASS; AI page remains PARTIAL)
+LAST_COMPLETED_COMMIT: 3ee4e79dd956a5e419adea8400be6ba76601a651
 LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; see audit and latest Android evidence)
-LAST_ATTEMPTED_COMMIT: a8da55828a3ba6d2f0b0c9d12f99ef8213ed08be (input boundary slice complete; broader parity task remains IN_PROGRESS)
+LAST_ATTEMPTED_COMMIT: 3ee4e79dd956a5e419adea8400be6ba76601a651 (AI history slice verified; broader native visual parity remains IN_PROGRESS)
 NEXT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
-NEXT_ACTION: Implement bounded, on-demand AI history paging using the existing Core conversation snapshot. Preserve full message content (up to the existing 6000-code-unit bound), expose older pages through a read-only Host action, keep each state frame under the existing 512000-character transport cap, and merge pages by stable messageId without losing scroll position. Update the Studio Host binding catalog/preview for the action. Add JVM, browser/bridge and API 35 Android regressions, including the 42-message/1945-character fixture and worst-case JSON escaping; compare with the confirmed frozen APK evidence. Do not change Core conversation rules or raise the state transport limit. Keep AI page and overall Native parity PARTIAL and Product Cutover HOLD.
+NEXT_ACTION: Compare frozen Native 0.9.5 and current Web AI bubble/role-label colors, shape, geometry, and typography using the same synthetic messages on the same API 35 AVD. Preserve the verified paging and scroll behavior; implement only the measured gap in the canonical Clear project. Keep AI page and overall Native parity PARTIAL and Product Cutover HOLD.
 LAST_TASK_EVIDENCE:
   NATIVE_095_AI_INPUT_LIMIT:
     status: PASS (6000-code-unit composer boundary only; AI page and overall Native parity remain PARTIAL)
@@ -37,7 +37,7 @@ LAST_TASK_EVIDENCE:
     evidence: .local/android-test/reports/native095-ai-input-20261106/manifest.md; docs/issues/PC-ISSUE-SEPARATION-NATIVE-AI-INPUT-LIMIT-20261106.md; audit docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md
     limits: test populated the WebView input via script (physical keyboard not tested); raw Native APK 6000-character input not directly compared; AI history, attachment, proposal, error/retry and menu visual parity remain open; Product Cutover HOLD
   NATIVE_095_AI_HISTORY_PROJECTION_AUDIT:
-    status: CONFIRMED (Android A/B reproduces dropped old messages and truncated content; implementation pending; AI page remains PARTIAL)
+    status: CONFIRMED as the pre-fix Android A/B finding; the narrow defect is verified fixed by NATIVE_095_AI_HISTORY_PAGING below; AI page remains PARTIAL
     source_baseline: b1f7629f0c52812e1887443872f43aa6c49908c4
     raw_apk_sha256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
     web_apk_sha256: EF29297DF78D253E2A9C3ED03B24C81664CC23CD2A429874B8C7E348D3E3789B
@@ -47,7 +47,20 @@ LAST_TASK_EVIDENCE:
     screenshots: raw top B82A5AC4C43E8AE74F3C356E73F808F20381131E8B36685189833F2F7765F157; raw bottom DE65B04118CB08E327C2B0646311854D512899DB86C586F83BA37193A6CE1711; Web top 643FC2CE814D70BD54551AFF163FBF380E3CB6694704659312360E175076FE88; Web bottom CE9BB6A84403509C061EAAF373FCB9739224F142B2A1340A77294E69D84F2ABE
     evidence: .local/android-test/reports/native095-ai-history-audit-20261106/manifest.md; docs/issues/PC-ISSUE-SEPARATION-NATIVE-AI-HISTORY-PROJECTION-20261106.md; docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md
     safety: no chat message or Calendar action invoked; test fixture removed; Raw 2-byte chat file restored; Web history file removed; onboarding prompt preference restored false; no AVD/app wipe; no Core calendar mutation requested
-    adjacent_risk: Web renderChat always scrolls to bottom on render; Native conditionally follows only near-bottom; exact state-update reader behavior remains untested
+    adjacent_risk: unconditional Web bottom-scroll was resolved by the paging implementation; browser E2E verifies anchor preservation and conditional follow behavior
+  NATIVE_095_AI_HISTORY_PAGING:
+    status: PASS (full message availability/content, bounded frames, stale revision/cursor rejection, reader anchoring; AI page remains PARTIAL)
+    source_baseline: b1f7629f0c52812e1887443872f43aa6c49908c4
+    code_commit: 3ee4e79dd956a5e419adea8400be6ba76601a651
+    apk_sha256: acabdf1fbb3df1c998d6b743851b01f3289042aa1159c8871364ca21063614ae
+    default_skin_sha256: cd09d73f021fd34bc3ce56534df5b72e5ba26a8bba87e6e34dc3ffda2bc4e0c8 (one powercal-clear-default.pcskin; source/APK bytes identical)
+    android: PowerCal_Wave2_QA35_20261104 / emulator-5556; API 35, 1080x2400, 420dpi, WebView 124.0.6367.219; actual touch paging displayed all 42 fixture messages and full 1945-character tail
+    browser: E2E loaded 84 ordered messages across stale revision plus append; rejected the old page request, preserved cached messages and 0px prepend anchor; conditional follow/reset checks PASS
+    tests: serial full Gradle 987/987 JVM, 0 failures/errors/skips; Skin/Native source boundaries, assembleDebug, lintDebug, AndroidTest compile PASS; Studio catalog 9/9 and Clear bridge E2E PASS
+    studio_python: 87/90 PASS; 3 unrelated stale source-shape assertions FAIL (names in Issue); suite is not reported as full PASS
+    store: Calendar DB SHA-256 unchanged at 0c009f99188c8584d805a31f17812c507d5f54412d17d9ec68ef38e9cace765a; synthetic chat file unchanged during read-only paging, then exact fixture removed; onboarding preference restored false
+    evidence: .local/android-test/reports/native095-ai-history-paging-20261106/manifest.md; Issue docs/issues/PC-ISSUE-SEPARATION-NATIVE-AI-HISTORY-PROJECTION-20261106.md; parity audit docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md
+    limits: bubble/role-label visuals, menu/attachment/proposal/error parity, and real provider NOT TESTED; AI page and global Native parity remain PARTIAL; Product Cutover HOLD
   NATIVE_095_EDGE_POINT_HIT_SLICES:
     status: PASS (bounded edge slivers and actual click reachability only; Timeline remains PARTIAL)
     source_baseline: b1f7629f0c52812e1887443872f43aa6c49908c4

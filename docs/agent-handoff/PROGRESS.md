@@ -2829,3 +2829,13 @@ API 35 emulator-5570 真实触控 Native Compose 与打包 Clear WebView 的无 
 - 窄切片 PASS：同日期/时区/12:00 Deadline 的 Native Compose 与 Web v3 配对 instrumentation，矩形四边最大误差 <1px；84×56 CSS 目标与冻结 Native 84dp×56dp 一致。API 35 WebView 实触摸边界样点 x=487 命中、x=489 未命中；raw 0.9.5 APK 对应样点结果相同。
 - Raw uiautomator 报告的节点矩形较窄，但 raw 实际点击仍命中 x=487；该节点数据作为单独的无障碍矩形保留，不据此缩小 Web 目标。事件未保存/删除，隔离 Store 计数不变。Full Timeline 及全页面 parity 继续 PARTIAL，Product Cutover HOLD。
 - 目标 Android instrumentation `nativeAndClearVisibleDeadlineHitBoundsMatchAndRespectEdges` 为 1/1 PASS。仅改动测试，不改产品代码/默认包；代码提交 `206a2bb9`。截图、SHA、边界 dump 与日志见 `.local/android-test/reports/native095-point-bounds-20261106/manifest.md`。
+
+
+## 2026-11-07 Native 0.9.5 AI history paging and reader-position slice
+
+- Status: narrow PASS; code commit `3ee4e79dd956a5e419adea8400be6ba76601a651`. The full frozen Native AI page and overall Native-to-Web visual parity remain PARTIAL; Product Cutover remains HOLD.
+- Implemented bounded full-content history pages (40 messages / 128 KiB serialized page cap), a closed Host action carrying conversation revision and client cache offset, stale-revision rejection, contiguous browser-page merging, and reader-anchor preservation. The Core conversation and Calendar data contracts were not changed.
+- Verification: serial Gradle gate 987/987 JVM, zero failures/errors/skips; source boundaries, assembleDebug, lintDebug and AndroidTest compile PASS. Studio catalog tests 9/9, Clear bridge E2E and browser paging/stale-request E2E PASS. Studio Python suite 87/90; the three existing source-shape failures are listed in the Issue and remain FAIL.
+- Final Debug APK SHA-256 `acabdf1fbb3df1c998d6b743851b01f3289042aa1159c8871364ca21063614ae`; single default package SHA-256 `cd09d73f021fd34bc3ce56534df5b72e5ba26a8bba87e6e34dc3ffda2bc4e0c8`. API 35 WebView actual touch test loaded all 42 synthetic messages, including the full 1945-character tail. Calendar DB stayed at SHA-256 `0c009f99188c8584d805a31f17812c507d5f54412d17d9ec68ef38e9cace765a`; test fixture was removed and onboarding preference restored.
+- Evidence: `.local/android-test/reports/native095-ai-history-paging-20261106/manifest.md`; issue `docs/issues/PC-ISSUE-SEPARATION-NATIVE-AI-HISTORY-PROJECTION-20261106.md`.
+- Unique next action: compare and implement the measured AI bubble/role-label visual gap against the frozen Native APK using the same fixture/device, while retaining verified paging behavior.
