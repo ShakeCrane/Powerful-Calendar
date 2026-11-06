@@ -1,3 +1,11 @@
+## 2026-11-07 Native 0.9.5 时间轴双指垂直缩放（窄切片 PASS）
+
+- **基线与提交：**分支 `codex/skin-single-default-closure` 从本地/远端一致的 `62287134710188482c5586459100b10e20994198` 开始；提交 `05514a12c3cf6c0b62bfe2daad04fbbdf433097f`（`fix(parity): 对齐原生时间轴双指缩放`）已正常推送。冻结视觉源码为 `b1f7629f0c52812e1887443872f43aa6c49908c4`。
+- **范围：**默认 Web v3 的两指纵向 pinch、时间尺双击复位、复位后再次 pinch 和“小时/屏”精度与冻结 Native 对齐。只更新展示 Camera；没有新增 Core/Store 操作。Native AVD `emulator-5560` 与 Web QA AVD `emulator-5556` 均 API 35、1080×2400、420dpi；WebView `124.0.6367.219`。
+- **验证：**串行 Gradle 全门禁 PASS，987/987 JVM，0 failure/error/skip；两个源码边界、APK、Lint、AndroidTest 编译 PASS。最终 Native/Web 仪器测试分别 1/1；Studio Python 90/90、binding catalog 9/9、相关 Node syntax 与 Preview Mock 浏览器 E2E PASS。官方 Builder 确认唯一默认包 `powercal-clear-default.pcskin`（10 files），源包与 APK 内资源 SHA-256 相同：`78C13F92BB2878A559CCD57FE64FEA7F22D2137460620139C69155C7CBF5BB7E`；Debug APK SHA-256 `CF310827CA4C3A7989DB79A5D35F6F2755F2AD01E7601D28B40CA271C74492CB`。
+- **证据：**`.local/android-test/reports/native095-timeline-pinch-20261107/manifest.md`；`docs/issues/PC-ISSUE-SEPARATION-NATIVE-TIMELINE-PINCH-20261107.md`；原生界面完整盘点与切片状态在 `docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md`。空轴截图只证明该手势及标签，Timeline 整页和 Native/Web 全页面等价仍 `PARTIAL`；未做数据库快照、真实设备/OEM 签核，Product Cutover `HOLD`。
+- **当前唯一下一动作：**将该提交构建的 APK 固定到 `dist/powercal/`，验证安装并完成隔离 API 35 主流程烟雾，再继续原生 0.9.5 页面 parity；没有将本窄切片扩大解释为整页验收。
+
 ## 2026-11-07 Native 0.9.5 个人资料 Settings 卡片对齐（窄范围 PASS）
 
 - **当前任务：**Native 0.9.5 视觉/交互迁移仍 `IN PROGRESS`；本次只签核 Settings 的个人资料卡，整页及其余日常页面仍 `PARTIAL`。Owner 冻结基线 `b1f7629f0c52812e1887443872f43aa6c49908c4`；产品 Cutover `HOLD`。

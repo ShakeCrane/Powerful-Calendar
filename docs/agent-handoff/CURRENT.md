@@ -8,24 +8,35 @@ OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: b6a9b91679c0f77d4e3415b6bdcee77d5663312e (Native profile Settings card narrow parity)
-LATEST_VERIFIED_HEAD: b6a9b91679c0f77d4e3415b6bdcee77d5663312e (serial Gradle PASS; 987/987 JVM; targeted API 35 WebView tests 2/2; Studio package tests 7/7 and E2E PASS; package verifier PASS)
-CURRENT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
+LATEST_CODE_HEAD: 05514a12c3cf6c0b62bfe2daad04fbbdf433097f (Native 0.9.5 Timeline pinch parity slice)
+LATEST_VERIFIED_HEAD: 05514a12c3cf6c0b62bfe2daad04fbbdf433097f (serial Gradle PASS; 987/987 JVM; final API 35 Native/Web pinch runs 1/1 each; Studio Python 90/90, catalog 9/9, browser E2E PASS; final assemble and package verification PASS)
+CURRENT_TASK: FUNCTIONAL_PREVIEW_DELIVERY
 TASK_STATUS: IN_PROGRESS
 PRODUCT_CUTOVER: HOLD
-TASK_BASE_HEAD: e129d2defa4af5fe30c7729402cd5d04d35b3370
-WORKING_APK_SHA256: B0AEEF6E19F8AA14AB5FBB2B4ED80C2DE0DED405C1519809A4827053EA09F0DF
-WORKING_DEFAULT_SKIN_SHA256: 4A057F27EA31343362B1EC7BD8F2E7B928E8C97A8520DE653B2A32196B3CD400
+TASK_BASE_HEAD: 05514a12c3cf6c0b62bfe2daad04fbbdf433097f
+WORKING_APK_SHA256: CF310827CA4C3A7989DB79A5D35F6F2755F2AD01E7601D28B40CA271C74492CB
+WORKING_DEFAULT_SKIN_SHA256: 78C13F92BB2878A559CCD57FE64FEA7F22D2137460620139C69155C7CBF5BB7E
 WORKING_DEFAULT_SKIN_ID: powercal-clear-default
-NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; implementation and full parity remain IN PROGRESS)
+NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; pinch slice narrow PASS; full page parity remains IN PROGRESS)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
-LAST_COMPLETED_TASK: Native 0.9.5 personal information Settings card parity (narrow PASS; entire Settings remains PARTIAL)
-LAST_COMPLETED_COMMIT: b6a9b91679c0f77d4e3415b6bdcee77d5663312e
-LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; no full page is signed off)
-LAST_ATTEMPTED_COMMIT: b6a9b91679c0f77d4e3415b6bdcee77d5663312e (latest verified narrow slice)
-NEXT_TASK: NATIVE_095_TIMELINE_PINCH_ZOOM_PARITY
-NEXT_ACTION: Compare frozen Native two-finger vertical Timeline zoom with the Web v3 pointer/touch path on the identity-verified API 35 AVDs. Trace the existing Camera Host action and bounds; implement the native gesture in Web only if the behavior gap is confirmed, then verify it with real WebView touch and unchanged Store. Do not infer whole Timeline parity.
+LAST_COMPLETED_TASK: Native 0.9.5 Timeline two-finger vertical pinch and zoom-label parity (narrow PASS; entire Timeline remains PARTIAL)
+LAST_COMPLETED_COMMIT: 05514a12c3cf6c0b62bfe2daad04fbbdf433097f
+LAST_ATTEMPTED_TASK: PowerCal Functional Preview artifact and main-flow smoke (IN PROGRESS)
+LAST_ATTEMPTED_COMMIT: 05514a12c3cf6c0b62bfe2daad04fbbdf433097f (build baseline)
+NEXT_TASK: FUNCTIONAL_PREVIEW_DELIVERY
+NEXT_ACTION: Preserve the APK built from 05514a12c3cf6c0b62bfe2daad04fbbdf433097f under dist/powercal, record package/version/hash/install instructions and known limits, then run the major-flow smoke on a verified isolated API 35 QA AVD. Do not call it delivered until the app is installed and those flows have observable evidence. After delivery, resume the Native 0.9.5 full-page parity audit; do not infer whole-page parity from the pinch slice.
 LATEST_SLICE_EVIDENCE:
+  NATIVE_095_TIMELINE_PINCH_ZOOM:
+    status: NARROW PASS (two-finger vertical pinch, ruler double-tap reset, repeat pinch, display rounding; entire Timeline remains PARTIAL)
+    source_baseline: b1f7629f0c52812e1887443872f43aa6c49908c4
+    code_commit: 05514a12c3cf6c0b62bfe2daad04fbbdf433097f
+    original_apk_sha256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
+    current_apk_sha256: CF310827CA4C3A7989DB79A5D35F6F2755F2AD01E7601D28B40CA271C74492CB
+    default_skin_sha256: 78C13F92BB2878A559CCD57FE64FEA7F22D2137460620139C69155C7CBF5BB7E (one package; source/APK asset bytes match)
+    android: frozen Native AVD emulator-5560 and Web QA AVD emulator-5556, API 35, 1080x2400, 420dpi; WebView 124.0.6367.219
+    tests: full serial Gradle gate PASS; 987 JVM tests, 0 failures/errors/skips; both source boundaries, APK, lint and AndroidTest compile PASS; final Native and Web pinch test 1/1 each; Studio Python 90/90, binding catalog 9/9, Node syntax and Preview Mock browser E2E PASS
+    evidence: .local/android-test/reports/native095-timeline-pinch-20261107/manifest.md; docs/issues/PC-ISSUE-SEPARATION-NATIVE-TIMELINE-PINCH-20261107.md; docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md
+    residuals: no dense-event geometry, whole-page screenshot parity, three-finger/pointer-cancel, local-year Android boundary, or DB snapshot; full Timeline and overall Native-to-Web parity remain PARTIAL; Product Cutover HOLD
   NATIVE_095_SETTINGS_PROFILE_CARD:
     status: NARROW PASS (profile card only; Settings remains PARTIAL)
     source_baseline: b1f7629f0c52812e1887443872f43aa6c49908c4
@@ -786,7 +797,7 @@ LATEST_VERIFIED_EVIDENCE:
     device_scope: connected task also ran 1/1 on PowerCal_Native095_RawFixture_20261106/emulator-5590; unintended enumeration, no unchanged-state claim, no further commands there
     evidence: .local/android-test/reports/native095-ai-bubbles-20261107/manifest.md; docs/issues/PC-ISSUE-SEPARATION-NATIVE-AI-BUBBLE-CHROME-20261107.md; docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md
     limitation: AI menu visual layout, attachment/proposal/error/retry, composer and whole-page behavior remain open; dark mode was computed-style asserted, not screenshot-compared; Product Cutover HOLD
-BLOCKERS: Whole-surface Native-to-Web parity remains incomplete. Remaining Timeline states include dense/multilane, locked, empty and broader accessibility behavior. Month, Memo (including the Web-only load-more control), editor/Draft Deck geometry, AI message-action menu appearance, attachment/proposal/error/retry states and whole-page comparisons, and Settings routes remain open. AI history paging and the 6000-code-unit input boundary have narrow PASS evidence, but the entire AI page remains PARTIAL. Studio Python suite has three unrelated route/recovery source-shape failures; full browser E2E has a pre-Timeline palette assertion failure. Forced checkpoint-I/O failure, physical/OEM reminder delivery and live AI provider reliability remain NOT TESTED. Product Cutover remains HOLD.
+BLOCKERS: Whole-surface Native-to-Web parity remains incomplete. Remaining Timeline states include dense/multilane, locked, empty and broader accessibility behavior. Month, Memo (including the Web-only load-more control), editor/Draft Deck geometry, AI message-action menu appearance, attachment/proposal/error/retry states and whole-page comparisons, and Settings routes remain open. AI history paging and the 6000-code-unit input boundary have narrow PASS evidence, but the entire AI page remains PARTIAL. Studio full Python suite now passes 90/90 and the targeted Preview Mock E2E passes; the broader browser E2E suite's previous pre-Timeline palette assertion failure was not rerun in this slice. Forced checkpoint-I/O failure, physical/OEM reminder delivery and live AI provider reliability remain NOT TESTED. Product Cutover remains HOLD.
 
 AUTHORITATIVE_PLAN: docs/POWERCAL_SINGLE_DEFAULT_SKIN_EXECUTION_PLAN_2026-11-03_R2.md
 ACCEPTANCE_MATRIX: docs/agent-handoff/SINGLE_SKIN_ACCEPTANCE.md
