@@ -124,7 +124,7 @@ async function doubleTapTimelineAxis(frame){
       };
       const point=seq=>{
         const button=event(seq),line=button.querySelector(".tPointLine"),r=rect(line);
-        return {line:r,start:Number(button.dataset.startMillis),from:Number(button.dataset.visibleStartMillis),
+        return {button:rect(button),line:r,start:Number(button.dataset.startMillis),from:Number(button.dataset.visibleStartMillis),
           to:Number(button.dataset.visibleEndMillis),surfaceY:surface.y,surfaceHeight:surface.height,
           aria:button.getAttribute("aria-label"),geometry:button.dataset.temporalGeometry};
       };
@@ -241,7 +241,14 @@ async function doubleTapTimelineAxis(frame){
       assert.ok(Math.abs((point.line.y+point.line.height/2)-expectedY)<1.1,
         "Point marker line must stay at the exact projected instant");
       assert.ok(point.aria,"Point remains separately accessible and clickable");
+      assert.equal(point.button.height,56,"Point hit target is 56 CSS pixels high");
     }
+    assert.ok(Math.abs(geometry.alarm.button.y-
+      (geometry.alarm.line.y+geometry.alarm.line.height/2))<1.1,
+      "Native ALARM hit target begins at its marker and extends below it");
+    assert.ok(Math.abs(geometry.exactDeadline.button.y+geometry.exactDeadline.button.height-
+      (geometry.exactDeadline.line.y+geometry.exactDeadline.line.height/2))<1.1,
+      "Native DEADLINE hit target ends at its marker after extending above it");
     assert.ok(geometry.dateDeadline.text.includes("2026-10-22")&&
       geometry.dateDeadline.text.includes("无具体时刻"));
     assert.equal(geometry.dateDeadline.date,"2026-10-22");

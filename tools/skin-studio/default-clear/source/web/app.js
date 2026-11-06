@@ -1035,8 +1035,12 @@ function renderTimeline(){
       title.style.top=(visualTop-hitTop)+"px";
       button.append(visual,title);
     }else{
-      const hitHeight=Math.min(height,44);
-      const hitTop=Math.max(0,Math.min(height-hitHeight,anchorY-hitHeight/2));
+      // Keep point hit regions on the same temporal side of the marker as frozen Native.
+      const hitHeight=Math.min(height,56);
+      const hitTop=kind==="DEADLINE"
+        ?anchorY-hitHeight
+        :kind==="ALARM"?anchorY
+          :Math.max(0,Math.min(height-hitHeight,anchorY-hitHeight/2));
       button.style.top=hitTop+"px";button.style.height=hitHeight+"px";
       const line=node("span","tPointLine "+kind);
       line.setAttribute("aria-hidden","true");line.dataset.anchorMillis=String(startMillis);
