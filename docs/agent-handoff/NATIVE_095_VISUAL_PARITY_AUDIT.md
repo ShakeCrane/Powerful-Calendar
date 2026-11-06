@@ -483,3 +483,5 @@ Web `showModal()` 后将焦点放在 dialog 容器本身，打开时不把焦点
 原始 APK 截图 SHA-256 `43B471F7C410BAB4474CE050CF24BA0845994C3A97143D8852972C0D95ACB6E2`；同夹具 Compose/Web 截图 SHA-256 分别为 `B94A4010F051FD3F8695170081FC88B32FC8558CBB820F07AC7F725BC6B843CC` 和 `4DD3CECD95A6610879C4BDB931B92616208B274BF33F54AC8D8D6BB4911FB73`。原始 APK 主界面截图和新 MainActivity 截图使用不同事件状态，仅用于壳标题/分隔线测量，不作为整屏同夹具对照。证据：`.local/android-test/reports/native095-timeline-title-20261106/manifest.md`。
 
 Timeline 整页仍 `PARTIAL`：本切片没有签核 ALARM 左翼、所有事件类型/状态、深色/大字体、重复实例及所有滚动组合。接续动作是以同一多事件夹具核对双翼滚动与定位，再按页面继续移植；产品 Cutover 保持 `HOLD`。问题记录见 `docs/issues/PC-ISSUE-SEPARATION-NATIVE-TIMELINE-OUTSIDE-TITLE-GREEDY-FOLDING-20261106.md`。
+
+代码和证据提交：`23d6d648b06155caa412a4a5d47b9cc4d9722667` (`fix(皮肤): 对齐原生时间轴框外标题与贪心折叠`)。

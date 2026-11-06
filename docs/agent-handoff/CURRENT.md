@@ -7,24 +7,36 @@ OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: 1f1d8c2d2e92ec665d81dd215248532efca0e533 (Native 0.9.5 date-only Deadline timeline geometry, anchor, chip and drag)
-LATEST_VERIFIED_HEAD: 1f1d8c2d2e92ec665d81dd215248532efca0e533 (serial source boundaries, 976/976 JVM, assembleDebug, lintDebug, AndroidTest compile/package, default package/APK byte identity and Studio bridge E2E PASS; API 35 TimelineDragWebViewInstrumentedTest 3/3 PASS)
+LATEST_CODE_HEAD: 23d6d648b06155caa412a4a5d47b9cc4d9722667 (Native 0.9.5 ACTIVITY outside-title placement, measured greedy folding and folded-target interaction)
+LATEST_VERIFIED_HEAD: 23d6d648b06155caa412a4a5d47b9cc4d9722667 (serial source boundaries, 976/976 JVM, assembleDebug, lintDebug, AndroidTest compile/package, package identity and targeted API 35 Timeline instrumentation 2/2 PASS)
 CURRENT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
 TASK_STATUS: IN_PROGRESS
 PRODUCT_CUTOVER: HOLD
 TASK_BASE_HEAD: e41246d7ebe5b329adbdc657bd3e53735695efa1
-WORKING_APK_SHA256: F2F4CBC14737437155E7CB373391CC94D44DAD27892FC788BABFB262ABBA4361
-WORKING_DEFAULT_SKIN_SHA256: 37B3C2FBECE928F547191B759BCC8DAEFB792799233506F8EAE861036BB49BF6
+WORKING_APK_SHA256: E18730AB26D010EDA290989FB0C9FC8B79DF55A55102AA0EA2FB81D4F5A328C1
+WORKING_DEFAULT_SKIN_SHA256: 3B1BBCD210D24458DF40F3AEBC5A4090F7B059F9406E964EAAB81661078BBA0E
 WORKING_DEFAULT_SKIN_ID: powercal-clear-default
 NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; implementation and full parity remain IN PROGRESS)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
-LAST_COMPLETED_TASK: Native 0.9.5 Timeline date-only Deadline true-time geometry, 23:59 point, chip and drag (narrow PASS; Timeline remains PARTIAL)
-LAST_COMPLETED_COMMIT: 1f1d8c2d2e92ec665d81dd215248532efca0e533
+LAST_COMPLETED_TASK: Native 0.9.5 Timeline ACTIVITY outside-title placement and measured greedy folding (narrow PASS; Timeline remains PARTIAL)
+LAST_COMPLETED_COMMIT: 23d6d648b06155caa412a4a5d47b9cc4d9722667
 LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; see audit and latest Android evidence)
-LAST_ATTEMPTED_COMMIT: 1f1d8c2d2e92ec665d81dd215248532efca0e533 (date-only Deadline geometry and drag)
+LAST_ATTEMPTED_COMMIT: 23d6d648b06155caa412a4a5d47b9cc4d9722667 (outside-title placement and greedy-folding slice)
 NEXT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
-NEXT_ACTION: Continue the finite page-by-page migration against the frozen 0.9.5-rc.1 APK. Next compare Timeline dual-wing behavior, outside-title placement and greedy title folding using identical multi-event data, then continue the event-editor internal component layout. Date-only Deadline geometry/drag, dense Month behavior and editor shell are narrow slices only; Timeline, Month, editor and full Native parity remain PARTIAL/IN_PROGRESS. Product Cutover remains HOLD.
+NEXT_ACTION: Continue finite page-by-page migration against the frozen 0.9.5-rc.1 APK. Next compare Timeline dual-wing horizontal scroll and Camera behavior using the same multi-event fixture, including the left ALARM wing; outside-title placement and ACTIVITY greedy folding now have narrow PASS evidence. Then continue event-editor internal component layout. Timeline, Month, editor and full Native parity remain PARTIAL/IN_PROGRESS. Product Cutover remains HOLD.
 LAST_TASK_EVIDENCE:
+  NATIVE_095_TIMELINE_OUTSIDE_TITLE_GREEDY_FOLDING:
+    status: PASS (ACTIVITY outside-title placement, measured rectangle folding, title bounds, folded-event target; Timeline overall remains PARTIAL)
+    source_baseline: b1f7629f0c52812e1887443872f43aa6c49908c4
+    reference_apk_sha256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
+    commit: 23d6d648b06155caa412a4a5d47b9cc4d9722667
+    current_apk_sha256: E18730AB26D010EDA290989FB0C9FC8B79DF55A55102AA0EA2FB81D4F5A328C1
+    current_skin_sha256: 3B1BBCD210D24458DF40F3AEBC5A4090F7B059F9406E964EAAB81661078BBA0E (410655 bytes, one package, source/APK identical)
+    tests: serial Gradle gate PASS; 976/976 JVM, 0 failures/errors/skips; source boundaries, assemble, lint and AndroidTest compile/package PASS; greedy-fold unit tests 10/10; distribution tests 2/2; package verifier PASS; targeted Android instrumentation 2/2 PASS
+    android: verified isolated API 35 AVD PowerCal_Wave2_QA35_20261104 / emulator-5556, 1080x2400, 420dpi, WebView 124.0.6367.219; Compose and actual WebView used the same five-ACTIVITY fixture; folded Fold_B opened its own editor without Store/commit change
+    geometry: three visible title leads match; title rectangle edges within 2.5 physical px; noon timeline point differs by 0.67px; today, zoom and reset actions passed
+    evidence: .local/android-test/reports/native095-timeline-title-20261106/manifest.md; issue docs/issues/PC-ISSUE-SEPARATION-NATIVE-TIMELINE-OUTSIDE-TITLE-GREEDY-FOLDING-20261106.md; audit docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md
+    limitations: left ALARM wing, other kinds/states, dark/large font, recurrence and full Timeline parity remain unverified; Product Cutover HOLD
   NATIVE_095_TIMELINE_DATE_DEADLINE:
     status: PASS (date-only Deadline geometry, 23:59 anchor, flag chip, accessible date precision, Host drag and read-only point tap; Timeline overall remains PARTIAL)
     source_baseline: b1f7629f0c52812e1887443872f43aa6c49908c4
