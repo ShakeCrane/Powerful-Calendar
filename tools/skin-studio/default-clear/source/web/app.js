@@ -1051,7 +1051,7 @@ function renderTimeline(){
   const newLeftOverflow=left.scrollWidth>left.clientWidth+1;
   const newRightOverflow=right.scrollWidth>right.clientWidth+1;
   left.scrollLeft=(!timelineScrollInitialized||(!previousLeftOverflow&&newLeftOverflow))
-    ?left.scrollWidth:previousLeftScroll;
+    ?0:previousLeftScroll;
   right.scrollLeft=(!timelineScrollInitialized||(!previousRightOverflow&&newRightOverflow))
     ?0:previousRightScroll;
   timelineScrollInitialized=true;
