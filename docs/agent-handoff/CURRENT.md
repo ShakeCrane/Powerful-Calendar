@@ -7,23 +7,23 @@ OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: f55140a2697befe483188c88052d1c5b4c8c22b4 (Native 0.9.5 Timeline dual-wing physical bounds and independent horizontal scroll)
-LATEST_VERIFIED_HEAD: f55140a2697befe483188c88052d1c5b4c8c22b4 (serial source boundaries, 976/976 JVM, assembleDebug, lintDebug, AndroidTest compile/package, package identity and targeted API 35 dual-wing instrumentation 1/1 PASS)
+LATEST_CODE_HEAD: 2f30b70013fc3fa2f464cb75c79852a9837f2d02 (Native date-only Deadline empty band and API 35 live status-bar inset; narrow parity slices)
+LATEST_VERIFIED_HEAD: 2f30b70013fc3fa2f464cb75c79852a9837f2d02 (serial source boundaries, 977/977 JVM, assembleDebug, lintDebug, AndroidTest compile/package, package identity, empty-date-band instrumentation 1/1 PASS)
 CURRENT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
 TASK_STATUS: IN_PROGRESS
 PRODUCT_CUTOVER: HOLD
 TASK_BASE_HEAD: e41246d7ebe5b329adbdc657bd3e53735695efa1
-WORKING_APK_SHA256: 960EE33EB990A94290646CDBF8D6C1F714031A237F5B107BCA93CE0316B67DDD
-WORKING_DEFAULT_SKIN_SHA256: 7373A2E0B7BE209AD5FCAAB304D90C5F96BD7C77DAC51B453504826FB315C3AF
+WORKING_APK_SHA256: 254d2ff1a8e4da4ebb3af4cbbffd68f9a2f3c13ff92fdf57cbd2ac3f509683de
+WORKING_DEFAULT_SKIN_SHA256: a60e791b35d8793082fd944974b6a05cc45a6d1b8040af8ff891a5985458f964
 WORKING_DEFAULT_SKIN_ID: powercal-clear-default
 NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; implementation and full parity remain IN PROGRESS)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
-LAST_COMPLETED_TASK: Native 0.9.5 Timeline dual-wing bounds and independent horizontal scroll (narrow PASS; Timeline remains PARTIAL)
-LAST_COMPLETED_COMMIT: f55140a2697befe483188c88052d1c5b4c8c22b4
+LAST_COMPLETED_TASK: Native 0.9.5 date-only Deadline empty state and API 35 status-bar inset (two narrow PASS slices; full Timeline and overall parity remain PARTIAL)
+LAST_COMPLETED_COMMIT: 2f30b70013fc3fa2f464cb75c79852a9837f2d02
 LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; see audit and latest Android evidence)
-LAST_ATTEMPTED_COMMIT: f55140a2697befe483188c88052d1c5b4c8c22b4 (dual-wing bounds and independent-scroll slice)
+LAST_ATTEMPTED_COMMIT: 2f30b70013fc3fa2f464cb75c79852a9837f2d02 (date-only Deadline state and live status-bar inset slices)
 NEXT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
-NEXT_ACTION: Directly run the frozen original APK and current Web Runtime against a matching isolated dual-wing fixture to close the remaining raw-APK evidence gap; then continue Native 0.9.5 event-point title typography/color comparison and the editor's internal component layout. Dual-wing Compose/Web geometry and touch behavior have narrow PASS evidence; Timeline, Month, editor and full Native parity remain PARTIAL/IN_PROGRESS. Product Cutover remains HOLD.
+NEXT_ACTION: Run the frozen original APK and current Web Runtime against a matching isolated dual-wing fixture to close the raw-APK evidence gap; then continue finite Native 0.9.5 event-point typography/color and editor-component comparisons. Timeline and overall Native-to-Web parity remain PARTIAL; Product Cutover remains HOLD.
 LAST_TASK_EVIDENCE:
   NATIVE_095_TIMELINE_WING_BOUNDS_AND_SCROLL:
     status: PASS (dual-wing physical bounds, independent scroll extents and touch movement; Timeline remains PARTIAL)
@@ -334,6 +334,20 @@ WAVE3_QUEUE:
   - Q-04 physical/OEM reminders: BLOCKED - EXTERNAL DEVICE; ADB listed only the isolated API 35 emulator. No physical/OEM test was run; see `Q04_PHYSICAL_DEVICE_RUNBOOK.md` and `.local/android-test/reports/Q-04-20261105/manifest.md`. This does not block the internal RC.
   - Q-05 single-default startup migration: PASS (commit 7197a907cacc875e0e8ecf4c662d2d550342a2f4; 973/973 JVM; source boundaries, APK assemble, lint and AndroidTest compile PASS; API 35 isolated AVD fresh install, Native/third-party choice migration, cold launch and corrupt-factory Native recovery PASS; legacy package files preserved when factory validation fails). QA APK: `dist/powercal/PowerCal-Release-Candidate-Q05-QA-2026-11-05.apk`, package `dev.powerfulcalendar.d05qaq05final`, SHA-256 `08E096B994C9078666DB43732F78D11B52B3603E836763B51A789E39348BA455`; evidence `.local/android-test/reports/Q-05-20261105/manifest.md`.
 
+
+  NATIVE_095_TIMELINE_EMPTY_DATE_BAND_AND_API35_STATUS_INSET:
+    status: PASS (two narrow slices; full Timeline and overall Native-to-Web parity remain PARTIAL)
+    source_baseline: b1f7629f0c52812e1887443872f43aa6c49908c4
+    commit: 2f30b70013fc3fa2f464cb75c79852a9837f2d02
+    reference_apk_sha256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
+    app_apk_sha256: 254d2ff1a8e4da4ebb3af4cbbffd68f9a2f3c13ff92fdf57cbd2ac3f509683de
+    default_skin_sha256: a60e791b35d8793082fd944974b6a05cc45a6d1b8040af8ff891a5985458f964 (10 files, 410938 bytes; source/APK byte-identical; exactly one official package)
+    tests: 977/977 JVM; source boundaries, assembleDebug, lintDebug, AndroidTest compile/package PASS; targeted API 35 empty-date-band instrumentation 1/1 PASS; JS syntax, distribution tests 2/2 and package verification PASS
+    android: isolated API 35 AVD PowerCal_Wave2_QA35_20261104 / emulator-5556; Native/Web same-fixture empty state; no unintended Store writes. Live status inset 128px; Web title screen layout y=162.39px vs Native y=153px (3.58dp), direct title/subtitle ink baselines within 1px.
+    studio_python: prior run 86/89; three named source-literal/route-registry failures; not rerun after final production changes, so no full-suite PASS claim.
+    evidence: .local/android-test/reports/native095-empty-date-band-20261106/; docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md; docs/issues/PC-ISSUE-SEPARATION-NATIVE-TIMELINE-EMPTY-DATE-BAND-20261106.md; docs/issues/PC-ISSUE-SEPARATION-NATIVE-SHELL-STATUS-INSET-20261106.md
+    limits: raw-APK and Web screenshots use different fixture state; only header geometry is compared. Remaining event/component and other-page differences are not signed off. Native recovery, Core behavior and Product Cutover remain unchanged/HOLD.
+
 WAVE_2_QUEUE:
   - F-03 Closure: PASS (commit 2a8c323890c0f121b80c72a2a4d1c5c2a35d010d)
   - S-02 Android Gate: PASS (commit 62334dce69ac25c316b5bc39497f08adbc20bd16)
@@ -581,7 +595,18 @@ LATEST_VERIFIED_EVIDENCE:
     evidence: .local/android-test/reports/native095-parity-20261105/month-visual-parity-final-full-gate.log; month-real-device-touch-sequence.jsonl; month-recurrence-prepare.log; month-recurrence-restore.log; docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md
     limits: screenshot metrics show remaining panel/agenda deltas; original-APK recurrence pixel pairing, Puppeteer browser E2E and Memo/AI/Settings/editor/review parity remain NOT TESTED; physical/OEM not tested.
 
-BLOCKERS: TalkBack focus order, forced checkpoint-I/O failure, physical/OEM reminder delivery and live AI provider reliability remain NOT TESTED; Studio full Python has two existing architecture/recovery source-literal failures and Puppeteer browser E2E is blocked by a missing local dependency; Memo and later page parity remain outstanding. Q-03 accessibility, Q-04 physical/OEM and historical SEP/SSA sign-offs remain incomplete. Public Product Cutover remains HOLD.
+
+  NATIVE_095_EMPTY_DATE_BAND_AND_API35_STATUS_INSET:
+    status: PASS (two narrow slices; full Timeline and overall parity remain PARTIAL)
+    commit: 2f30b70013fc3fa2f464cb75c79852a9837f2d02
+    source_baseline: b1f7629f0c52812e1887443872f43aa6c49908c4
+    tests: 977/977 JVM; source boundaries, assemble, lint, AndroidTest compile/package PASS; targeted isolated API 35 instrumentation 1/1 PASS; distribution tests 2/2 and package verification PASS
+    apk_sha256: 254d2ff1a8e4da4ebb3af4cbbffd68f9a2f3c13ff92fdf57cbd2ac3f509683de
+    default_skin_sha256: a60e791b35d8793082fd944974b6a05cc45a6d1b8040af8ff891a5985458f964; exactly one powercal-clear-default package, source/APK byte-identical
+    android: API 35 isolated AVD PowerCal_Wave2_QA35_20261104 / emulator-5556; query-level date-band and live inset measurements; Core Store unchanged
+    studio_python: earlier 86/89 run with three known failures; not rerun after this slice, not claimed PASS
+    evidence: .local/android-test/reports/native095-empty-date-band-20261106/; docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md
+BLOCKERS: Whole-surface Native-to-Web parity remains incomplete; matched raw-APK dual-wing comparison and multiple Native page/component comparisons remain. TalkBack focus order, forced checkpoint-I/O failure, physical/OEM reminder delivery and live AI provider reliability remain NOT TESTED. Studio Python was 86/89 in an earlier run (three named route/architecture source-literal failures) and has not been rerun on this slice. Product Cutover remains HOLD.
 
 AUTHORITATIVE_PLAN: docs/POWERCAL_SINGLE_DEFAULT_SKIN_EXECUTION_PLAN_2026-11-03_R2.md
 ACCEPTANCE_MATRIX: docs/agent-handoff/SINGLE_SKIN_ACCEPTANCE.md
