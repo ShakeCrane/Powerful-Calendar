@@ -50,28 +50,28 @@
 <p class="quiet">导入、导出与备份由 Android 宿主处理；需要迁移或恢复时，宿主会先显示确认。</p>
 <div id="settingsOptionGroups" role="group" aria-label="日历与数据操作"></div>
 </div></section>
-<section id="settings-profile-section" class="settings-section"><div class="section-label">个人信息</div><div class="settings-card">
-<p class="quiet">本机资料 · 不上传给 AI。个人显示名称由 Android 宿主保存。</p>
-<button id="openProfileSettings" class="memo-limit" type="button" data-action="openProfileEditor">编辑个人资料</button>
+<section id="settings-profile-section" class="settings-section" aria-labelledby="settingsProfileHeading"><div class="settings-card">
+<h2 id="settingsProfileHeading" class="settings-card-heading">个人信息</h2>
+<p class="settings-profile-subtitle">本机资料 · 不上传给 AI</p>
+<p id="profileEditorPrivacy" class="quiet">头像与云端资料将在皮肤系统完成后支持；个人资料不是日历业务数据。</p>
+<div id="profileEditorPanel" class="profile-editor-inline" role="group" aria-labelledby="settingsProfileHeading" aria-describedby="profileEditorPrivacy">
+  <form id="profileEditorForm">
+    <div class="profile-field">
+      <input id="profileDisplayName" type="text" maxlength="80" placeholder=" " autocomplete="nickname" readonly aria-describedby="profileEditorPrivacy">
+      <label for="profileDisplayName">你的名字（可选）</label>
+    </div>
+    <p id="profileEditorStatus" role="status" aria-live="polite" aria-atomic="true"></p>
+    <div class="profile-editor-actions">
+      <button id="profileSaveButton" type="button" class="primary">保存个人信息</button>
+    </div>
+  </form>
+</div>
 </div></section>
 <section id="settings-ai-section" class="settings-section"><div class="section-label">单一 AI</div><div class="settings-card">
 <p class="quiet">端点、模型、密钥、事件上下文与文件处理授权由 Android 宿主的受保护设置管理；密钥不会发送给皮肤。</p>
 <button id="openAiSettings" class="memo-limit" type="button" data-action="openAiSettings">打开 AI 配置与隐私设置</button>
 </div></section>
 </section>
-<dialog id="profileEditorDialog" aria-labelledby="profileEditorHeading" aria-describedby="profileEditorPrivacy">
-  <form id="profileEditorForm">
-    <h2 id="profileEditorHeading" tabindex="-1">个人资料</h2>
-    <p id="profileEditorPrivacy" class="quiet">显示名称最多 80 个字符，由 Android 宿主保存。</p>
-    <label for="profileDisplayName">显示名称</label>
-    <input id="profileDisplayName" type="text" maxlength="80" autocomplete="nickname" aria-label="个人资料显示名称">
-    <p id="profileEditorStatus" role="status" aria-live="polite" aria-atomic="true"></p>
-    <div class="profile-editor-actions">
-      <button id="profileCancelButton" type="button">取消</button>
-      <button id="profileSaveButton" type="button" class="primary">保存个人资料</button>
-    </div>
-  </form>
-</dialog>
 <section id="extraOptions" class="page" hidden><h1>可用选项</h1><div id="optionGroups"></div></section>
 <nav class="clear-tabbar" aria-label="页面导航"><button data-action="timeline" class="current" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17h2.2l4.1-5.2 3.4 2.6 6.1-7.1L17.3 6l-4.9 5.7L9 9.2 4.4 15H3zM19 3h2v2h-2z"/></svg><span>时间轴</span></button><button data-action="month"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11zM7 11h3v3H7zm5 0h3v3h-3z"/></svg><span>日历</span></button><button data-action="ai"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8L12 2zm7 13 .8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15zM5 15l.8 2.2L8 18l-2.2.8L5 21l-.8-2.2L2 18l2.2-.8L5 15z"/></svg><span>AI 助手</span></button><button data-action="settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.14 12.94c.04-.31.06-.62.06-.94s-.02-.63-.07-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.61-.22l-2.39.96a7.2 7.2 0 0 0-1.63-.94l-.36-2.54A.49.49 0 0 0 13.88 2h-3.76a.49.49 0 0 0-.49.42L9.27 4.96c-.59.23-1.14.55-1.63.94l-2.39-.96a.5.5 0 0 0-.61.22L2.72 8.48a.5.5 0 0 0 .12.64l2.03 1.58c-.05.31-.07.63-.07.95s.02.63.07.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.31.61.22l2.39-.96c.49.39 1.04.71 1.63.94l.36 2.54c.04.24.24.42.49.42h3.76c.25 0 .45-.18.49-.42l.36-2.54c.59-.23 1.14-.55 1.63-.94l2.39.96c.22.09.48 0 .61-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.02-1.58zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg><span>设置</span></button><button class="compat-memo-route" data-action="memo" aria-label="Memo 路由兼容" aria-hidden="true" tabindex="-1" hidden>Memo</button></nav>
 <section id="skinSheet" role="dialog" aria-modal="true" aria-label="编辑" hidden>

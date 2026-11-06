@@ -90,13 +90,14 @@ async function main(){
     })()`);
     if(loaded?.id!=="powercal-clear-default")throw Error("Canonical Clear package did not load");
     await evaluate("document.querySelector('#advancedMode').click()");
-    await waitFor(evaluate,"document.querySelector('#htmlCode')?.value.includes('profileEditorDialog')&&"+
-      "document.querySelector('#cssCode')?.value.includes('#profileEditorDialog')&&"+
+    await waitFor(evaluate,"document.querySelector('#htmlCode')?.value.includes('profileEditorPanel')&&"+
+      "document.querySelector('#cssCode')?.value.includes('.profile-editor-inline')&&"+
       "document.querySelector('#jsCode')?.value.includes('renderProfileEditor')",
       "profile form HTML/CSS/JS source in Studio");
     const sourceEdit=await evaluate("(()=>{const editor=document.querySelector('#htmlCode');"+
-      "const original=editor.value;const changed=original.replace('编辑个人资料',"+
-      "'编辑个人资料 · Studio源编辑探针');if(changed===original)return {changed:false};"+
+      "const original=editor.value;const changed=original.replace('头像与云端资料将在皮肤系统完成后支持；',"+
+      "'头像与云端资料将在皮肤系统完成后支持；Studio源编辑探针；');"+
+      "if(changed===original)return {changed:false};"+
       "editor.value=changed;editor.dispatchEvent(new Event('input',{bubbles:true}));"+
       "const updated=getText('web/index.html')===changed;editor.value=original;"+
       "editor.dispatchEvent(new Event('input',{bubbles:true}));"+
@@ -135,23 +136,23 @@ async function main(){
     await waitFor(evaluate,"mockPage==='SETTINGS'&&lastState?.page==='SETTINGS'","Mock Settings route");
     if(await evaluate("lastState?.profileEditor!==null"))
       throw Error("profile value was projected before the explicit editor action");
-    await frameEval("document.querySelector('[data-action=\"openProfileEditor\"]').click()");
+    await frameEval("document.querySelector('#profileDisplayName').click()");
     await waitFor(evaluate,"mockProfileEditor?.displayName==='Studio Profile Preview'&&"+
       "lastState?.profileEditor?.displayName==='Studio Profile Preview'",
       "synthetic profile editor projection");
-    await waitFor(frameEval,"document.querySelector('#profileEditorDialog').open",
-      "skin-authored profile dialog");
+    await waitFor(frameEval,"!document.querySelector('#profileDisplayName').readOnly",
+      "skin-authored profile editor");
     await frameEval("(()=>{const input=document.querySelector('#profileDisplayName');"+
       "input.value='Synthetic Studio Name';input.dispatchEvent(new Event('input',{bubbles:true}));"+
       "document.querySelector('#profileSaveButton').click()})()");
     await waitFor(evaluate,"lastState?.profileEditor?.displayName==='Synthetic Studio Name'&&"+
       "lastState?.profileEditor?.saved===true","synthetic profile save in Mock");
-    await frameEval("document.querySelector('#profileCancelButton').click()");
+    await frameEval("window.PowerCalSkin.handleHostBack()");
     await waitFor(evaluate,"mockProfileEditor===null&&lastState?.profileEditor===null",
       "profile value removed after explicit close");
-    await frameEval("document.querySelector('[data-action=\"openProfileEditor\"]').click()");
+    await frameEval("document.querySelector('#profileDisplayName').click()");
     await waitFor(evaluate,"Boolean(mockProfileEditor)","reopen profile editor before route change");
-    await frameEval("document.querySelector('[data-action=\"openProfileEditor\"]').click()");
+    await frameEval("document.querySelector('#profileDisplayName').click()");
     await waitFor(evaluate,"Boolean(mockProfileEditor)","reopen profile editor before route change");
     await frameEval("document.querySelector('.clear-tabbar [data-action=\"timeline\"]').click()");
     await waitFor(evaluate,"mockPage==='TIMELINE'&&lastState?.profileEditor===null",

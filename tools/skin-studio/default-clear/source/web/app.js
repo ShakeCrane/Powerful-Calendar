@@ -629,17 +629,31 @@ document.querySelectorAll("#monthPickerForm [data-month-number]").forEach(button
     send("selectMonth",{month:`${String(year).padStart(4,"0")}-${String(month).padStart(2,"0")}`});
   }));
 function closeProfileEditor(){
-  const dialog=$("profileEditorDialog");
-  if(dialog.open)dialog.close();
+  const input=$("profileDisplayName");
+  input.value="";
+  input.readOnly=true;
   profileEditorDirty=false;
+  profileEditorSaveRevision=-1;
+  $("profileEditorStatus").textContent="";
   send("closeProfileEditor");
+  if(!$("settingsPage").hidden)input.focus({preventScroll:true});
 }
 function saveProfileEditor(){
-  const displayName=$("profileDisplayName").value;
+  const input=$("profileDisplayName");
+  if(input.readOnly){send("openProfileEditor");return}
+  const displayName=input.value;
   if(displayName.length>80)return;
   if(send("saveProfileEditor",{displayName}))
     $("profileEditorStatus").textContent="正在保存…";
 }
+$("profileDisplayName").addEventListener("click",()=>{
+  if($("profileDisplayName").readOnly)send("openProfileEditor");
+});
+$("profileDisplayName").addEventListener("keydown",event=>{
+  if($("profileDisplayName").readOnly&&(event.key==="Enter"||event.key===" ")){
+    event.preventDefault();send("openProfileEditor");
+  }
+});
 $("profileDisplayName").addEventListener("input",()=>{
   profileEditorDirty=true;
   $("profileEditorStatus").textContent="";
@@ -647,10 +661,6 @@ $("profileDisplayName").addEventListener("input",()=>{
 $("profileSaveButton").addEventListener("click",saveProfileEditor);
 $("profileEditorForm").addEventListener("submit",event=>{
   event.preventDefault();saveProfileEditor();
-});
-$("profileCancelButton").addEventListener("click",closeProfileEditor);
-$("profileEditorDialog").addEventListener("cancel",event=>{
-  event.preventDefault();closeProfileEditor();
 });
 $("chatForm").addEventListener("submit",e=>{
   e.preventDefault();
@@ -1668,20 +1678,21 @@ function renderAiProposalReview(list){
   list.append(root);
 }
 function renderProfileEditor(){
-  const dialog=$("profileEditorDialog"),profile=state.profileEditor;
+  const profile=state.profileEditor;
   const input=$("profileDisplayName"),status=$("profileEditorStatus");
   if(!profile||typeof profile.displayName!=="string"){
-    if(dialog.open)dialog.close();
+    if(!input.readOnly)input.value="";
+    input.readOnly=true;
     profileEditorDirty=false;profileEditorSaveRevision=-1;
     return;
   }
   const revision=Number(profile.saveRevision)||0;
-  if(!dialog.open){
+  if(input.readOnly){
     input.value=profile.displayName;
+    input.readOnly=false;
     profileEditorDirty=false;profileEditorSaveRevision=revision;
     status.textContent=profile.saved?"已保存":"";
-    dialog.showModal();
-    $("profileEditorHeading").focus({preventScroll:true});
+    input.focus({preventScroll:true});
   }else if(revision!==profileEditorSaveRevision){
     input.value=profile.displayName;
     profileEditorDirty=false;profileEditorSaveRevision=revision;
@@ -1709,10 +1720,10 @@ function renderOptions(){
   }
 }
 function handleHostBack(){
+  if(!$("profileDisplayName").readOnly){closeProfileEditor();return true}
   const dialogs=document.querySelectorAll("dialog[open]");
   const active=dialogs[dialogs.length-1];
   if(!active)return false;
-  if(active.id==="profileEditorDialog"){closeProfileEditor();return true}
   active.close();
   return true;
 }

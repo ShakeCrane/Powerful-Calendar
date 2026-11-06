@@ -252,6 +252,18 @@ body[data-page="settings"] #settingsPage>#settings-diagnostics-section {order:7}
 .settings-card {margin:0 4px;padding:3px 12px 8px;border:1px solid #DCE2EC;border-radius:25px;background:var(--bg-canvas);box-shadow:none}
 .settings-card>.quiet {padding:7px 3px;color:var(--label-2);font-size:12px;line-height:1.45}
 .settings-card>.memo-limit {display:inline-flex;width:auto;max-width:100%;margin:4px 0 7px;padding:10px 16px;border:1px solid var(--label-4);border-radius:24px;background:transparent;color:var(--label-2);text-align:left}
+#settings-profile-section>.settings-card {padding-top:16px;background:var(--fill-1)}
+#settings-profile-section .settings-card-heading {margin:0 3px;color:var(--label);font-size:22px;font-weight:600;line-height:1.25}
+#settings-profile-section .settings-profile-subtitle {margin:4px 3px 10px;color:var(--label-2);font-size:11px;line-height:1.45}
+#settings-profile-section>.settings-card>.quiet {padding:0 3px}
+#settings-profile-section .profile-editor-inline .quiet {padding:0 3px;color:var(--label-2);font-size:12px;line-height:1.45}
+#settings-profile-section .profile-editor-actions {justify-content:flex-start;margin-top:0}
+#settings-profile-section .profile-editor-actions button.primary {border:1px solid var(--label-4);background:transparent;color:var(--label-2)}
+#settings-profile-section>.settings-card {padding-bottom:20px}
+#profileEditorForm .profile-field label {color:var(--label-2)}
+#profileEditorForm #profileDisplayName:focus + label,
+#profileEditorForm #profileDisplayName:not(:placeholder-shown) + label {background:var(--fill-1)}
+#profileEditorForm #profileEditorStatus:empty {display:none}
 #settingsPage #reconcileReminders {display:flex;width:100%;justify-content:center}
 .reminder-diagnostics {margin:2px 0 5px}
 .reminder-diagnostic {border:0;border-bottom:1px solid var(--sep);border-radius:0;background:transparent;padding:9px 2px}

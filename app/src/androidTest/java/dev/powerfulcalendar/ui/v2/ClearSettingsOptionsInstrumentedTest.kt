@@ -64,6 +64,7 @@ import dev.powerfulcalendar.ai.AiSettingsStore
 import dev.powerfulcalendar.interop.IcsCodec
 import org.json.JSONObject
 import org.json.JSONArray
+import org.json.JSONTokener
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -463,6 +464,18 @@ class ClearSettingsOptionsInstrumentedTest {
             assertTrue(evaluate(view,
                 "document.querySelector('[data-action=nativeSettings]')===null&&" +
                     "document.querySelector('#settings-recovery-section')===null") == "true")
+            assertEquals("Native profile card title remains inside its surface with heading semantics",
+                "true", evaluate(view,
+                    "(()=>{const section=document.querySelector('#settings-profile-section');" +
+                        "const card=section.querySelector('.settings-card');" +
+                        "const heading=document.querySelector('#settingsProfileHeading');" +
+                        "const input=document.querySelector('#profileDisplayName');" +
+                        "const style=getComputedStyle(card);" +
+                        "return section.getAttribute('aria-labelledby')==='settingsProfileHeading'&&" +
+                        "heading.parentElement===card&&section.querySelector(':scope>.section-label')===null&&" +
+                        "input.closest('.settings-card')===card&&input.readOnly&&input.value===''&&" +
+                        "getComputedStyle(heading).fontSize==='22px'&&" +
+                        "style.backgroundColor==='rgb(246, 248, 252)'})()"))
             assertFalse("Clear state must not expose installed skins", WebSkinBridgeRuntime.state().has("skinChoices"))
             assertFalse("Clear state must not expose a selected skin id",
                 WebSkinBridgeRuntime.state().has("selectedSkinId"))
@@ -2073,12 +2086,24 @@ class ClearSettingsOptionsInstrumentedTest {
             assertTrue("Clear Bridge must omit profile data until the user opens its editor",
                 closedProjection.isNull("profileEditor") &&
                     !closedProjection.toString().contains(baseName))
+            assertEquals("The Native-shaped field remains blank until explicit user activation",
+                "\"\"", evaluate(view, "document.querySelector('#profileDisplayName').value"))
+            val profileBounds = JSONObject(JSONTokener(evaluate(view,
+                "(()=>{const selectors=['#settingsProfileHeading','#profileDisplayName','#profileSaveButton'];" +
+                    "return JSON.stringify(Object.fromEntries(selectors.map(selector=>{" +
+                    "const rect=document.querySelector(selector).getBoundingClientRect();" +
+                    "return [selector,{x:rect.x,y:rect.y,width:rect.width,height:rect.height}]})))})()")
+                ).nextValue() as String)
+            assertTrue("Profile controls expose measurable initial WebView bounds: $profileBounds",
+                profileBounds.has("#profileDisplayName") && profileBounds.has("#profileSaveButton"))
+            println("NATIVE095_PROFILE_WEB_DOM_BOUNDS dpr=" +
+                evaluate(view, "window.devicePixelRatio") + " bounds=$profileBounds")
 
-            tapWebSelector(view, "#openProfileSettings")
+            tapWebSelector(view, "#profileDisplayName")
             compose.waitUntil(10_000) {
                 val profileState = WebSkinBridgeRuntime.state().optJSONObject("profileEditor")
                 profileState?.optString("displayName") == baseName &&
-                    evaluate(view, "document.querySelector('#profileEditorDialog').open") == "true"
+                    evaluate(view, "!document.querySelector('#profileDisplayName').readOnly") == "true"
             }
             assertEquals("The opened skin-owned form receives only the stored display name",
                 baseName, WebSkinBridgeRuntime.state().getJSONObject("profileEditor")
@@ -2117,7 +2142,9 @@ class ClearSettingsOptionsInstrumentedTest {
             )
             compose.waitUntil(10_000) {
                 WebSkinBridgeRuntime.state().isNull("profileEditor") &&
-                    evaluate(view, "document.querySelector('#profileEditorDialog').open") == "false"
+                    evaluate(view, "document.querySelector('#profileDisplayName').readOnly&&" +
+                        "document.querySelector('#profileDisplayName').value===''&&" +
+                        "document.activeElement.id==='profileDisplayName'") == "true"
             }
             assertEquals("Android Back closes the skin editor without saving later edits",
                 savedName, profile.getString("displayName", null))
@@ -2129,7 +2156,7 @@ class ClearSettingsOptionsInstrumentedTest {
             assertFalse("Closed profile values must remain absent from the Bridge frame",
                 WebSkinBridgeRuntime.state().toString().contains(savedName))
             println("SEP11_NATIVE_CLEAR_AUTHORED_PROFILE_EDITOR " +
-                "nativeSaved=true clearSkinSaved=true valueOnlyWhileOpen=true backDiscardsDraft=true " +
+                "nativeReferenceInlineField=true clearSkinSaved=true valueOnlyWhileOpen=true backDiscardsDraft=true " +
                 "factorySkinRemainsActive=true storeUnchanged=true")
         } finally {
             compose.runOnUiThread {
