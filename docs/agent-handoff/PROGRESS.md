@@ -1,3 +1,12 @@
+## 2026-11-06 AI 历史投影差异真实 APK A/B 确认（修复待实施）
+
+- **基准与样本：**冻结源码 `b1f7629f0c52812e1887443872f43aa6c49908c4`，原始 APK SHA-256 `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`；当前 Web Debug APK SHA-256 `EF29297DF78D253E2A9C3ED03B24C81664CC23CD2A429874B8C7E348D3E3789B`。两个已核验 API 35 AVD 均 1080×2400、420 dpi；WebView 124.0.6367.219。相同的 42 条合成会话，最后一条 1945 字并含唯一尾标，fixture SHA-256 `272CB979F92023335C55BFF29BD453EC425BF4EA11832CC827147541842F4CE1`。
+- **冻结 Native 事实：**`AiChatHistoryStore` 最多保留 200 条；Native `AiChatScreen` 接收并在 `LazyColumn.itemsIndexed(messages)` 中呈现完整传入列表，文本行数上限 75；用户请求上下文最近 80 条是模型请求规则，不是 UI 截断规则。
+- **真实 A/B：**Raw Native 顶部实际截图显示 `HISTORY_00_SENTINEL`；Web 顶部从 `HISTORY_02_SENTINEL` 开始。Web 无障碍树显示 39 条编号项 02–40 加一个长消息（总 40 条）。Raw Native 底部截图包含 `LONG_HISTORY_END_SENTINEL`；Web 只展示该消息首 1600 字，尾标缺失。原始截图和 SHA 在 `.local/android-test/reports/native095-ai-history-audit-20261106/manifest.md`。
+- **修复约束：**`WebSkinStateFeed` 有 512000 字符完整状态帧上限。必须通过有界、按需分页传递完整历史，保持现有 Core 会话规则、稳定 messageId/revision 和传输上限；不能直接提高投影上限导致状态帧溢出，也不能增加新的 Core 业务语义。Web `renderChat()` 每次渲染强制滚底与 Native 条件锚定是相关但尚未独立复现的风险。
+- **测试数据恢复：**Raw AVD 原先 2-byte 空聊天文件已从 app 私有备份还原；Web AVD 原先不存在聊天历史文件，测试文件已移除；唯一 onboarding 偏好复原为 `false`。没有清除 AVD/应用数据、导入系统日历、发送聊天内容或调用 Calendar 写动作。A/B 只确认 UI 投影缺陷，AI 页面和 Product Cutover 仍 `PARTIAL` / `HOLD`。
+- **Issue：**`docs/issues/PC-ISSUE-SEPARATION-NATIVE-AI-HISTORY-PROJECTION-20261106.md`。下一项是 bounded AI history paging 实施与端到端验证。
+
 ## 2026-11-06 Native 0.9.5 AI 输入上限边界（窄切片 PASS）
 
 - **范围：**依据冻结源码 `b1f7629f0c52812e1887443872f43aa6c49908c4` 和原始 APK SHA-256 `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`，将默认 Web Skin 与正式 Core/Host 的 AI 消息输入上限从 4000 对齐到既有 6000 UTF-16 code unit。AI 页面、Native/Web 整体交互及视觉 parity 仍为 `PARTIAL`；Product Cutover 仍 `HOLD`。

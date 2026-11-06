@@ -23,7 +23,7 @@ LAST_COMPLETED_COMMIT: a8da55828a3ba6d2f0b0c9d12f99ef8213ed08be
 LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; see audit and latest Android evidence)
 LAST_ATTEMPTED_COMMIT: a8da55828a3ba6d2f0b0c9d12f99ef8213ed08be (input boundary slice complete; broader parity task remains IN_PROGRESS)
 NEXT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
-NEXT_ACTION: Audit the bounded AI history projection discrepancy. Frozen Native `AiChatScreen` renders the history list it receives; `WebAiChatHistory.kt` currently projects at most 40 messages and truncates each content field to 1600 characters, while Core accepts up to 6000 per message. Trace the actual Native and Web source-to-screen paths, history load/paging contracts, and existing tests before deciding whether this is a user-visible parity defect or a documented display bound. Reproduce with a deterministic history and compare the original frozen APK with Web v3. Do not change Core/history semantics without evidence. Keep AI and overall Native parity PARTIAL and Product Cutover HOLD.
+NEXT_ACTION: Implement bounded, on-demand AI history paging using the existing Core conversation snapshot. Preserve full message content (up to the existing 6000-code-unit bound), expose older pages through a read-only Host action, keep each state frame under the existing 512000-character transport cap, and merge pages by stable messageId without losing scroll position. Update the Studio Host binding catalog/preview for the action. Add JVM, browser/bridge and API 35 Android regressions, including the 42-message/1945-character fixture and worst-case JSON escaping; compare with the confirmed frozen APK evidence. Do not change Core conversation rules or raise the state transport limit. Keep AI page and overall Native parity PARTIAL and Product Cutover HOLD.
 LAST_TASK_EVIDENCE:
   NATIVE_095_AI_INPUT_LIMIT:
     status: PASS (6000-code-unit composer boundary only; AI page and overall Native parity remain PARTIAL)
@@ -36,6 +36,18 @@ LAST_TASK_EVIDENCE:
     current_skin_sha256: 2C503559A2CD7FAE57C2F40E529A05913D41B3192931458D17771AF2714F9E4E (10 files, one package, source/APK identical)
     evidence: .local/android-test/reports/native095-ai-input-20261106/manifest.md; docs/issues/PC-ISSUE-SEPARATION-NATIVE-AI-INPUT-LIMIT-20261106.md; audit docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md
     limits: test populated the WebView input via script (physical keyboard not tested); raw Native APK 6000-character input not directly compared; AI history, attachment, proposal, error/retry and menu visual parity remain open; Product Cutover HOLD
+  NATIVE_095_AI_HISTORY_PROJECTION_AUDIT:
+    status: CONFIRMED (Android A/B reproduces dropped old messages and truncated content; implementation pending; AI page remains PARTIAL)
+    source_baseline: b1f7629f0c52812e1887443872f43aa6c49908c4
+    raw_apk_sha256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
+    web_apk_sha256: EF29297DF78D253E2A9C3ED03B24C81664CC23CD2A429874B8C7E348D3E3789B
+    devices: PowerCal_Native095_RawFixture_20261106/emulator-5590 and PowerCal_Wave2_QA35_20261104/emulator-5556; API 35, 1080x2400, 420dpi; WebView 124.0.6367.219
+    fixture: 42 alternating messages; final content 1945 chars; SHA-256 272CB979F92023335C55BFF29BD453EC425BF4EA11832CC827147541842F4CE1
+    observed: Native top includes HISTORY_00; Web top begins HISTORY_02 (39 numbered items 02-40 plus long item); Native end includes LONG_HISTORY_END_SENTINEL; Web truncates at 1600 and has no end sentinel
+    screenshots: raw top B82A5AC4C43E8AE74F3C356E73F808F20381131E8B36685189833F2F7765F157; raw bottom DE65B04118CB08E327C2B0646311854D512899DB86C586F83BA37193A6CE1711; Web top 643FC2CE814D70BD54551AFF163FBF380E3CB6694704659312360E175076FE88; Web bottom CE9BB6A84403509C061EAAF373FCB9739224F142B2A1340A77294E69D84F2ABE
+    evidence: .local/android-test/reports/native095-ai-history-audit-20261106/manifest.md; docs/issues/PC-ISSUE-SEPARATION-NATIVE-AI-HISTORY-PROJECTION-20261106.md; docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md
+    safety: no chat message or Calendar action invoked; test fixture removed; Raw 2-byte chat file restored; Web history file removed; onboarding prompt preference restored false; no AVD/app wipe; no Core calendar mutation requested
+    adjacent_risk: Web renderChat always scrolls to bottom on render; Native conditionally follows only near-bottom; exact state-update reader behavior remains untested
   NATIVE_095_EDGE_POINT_HIT_SLICES:
     status: PASS (bounded edge slivers and actual click reachability only; Timeline remains PARTIAL)
     source_baseline: b1f7629f0c52812e1887443872f43aa6c49908c4
