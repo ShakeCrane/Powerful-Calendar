@@ -124,6 +124,31 @@
         "bindable": true
       },
       {
+        "path": "chatHistoryHasOlder",
+        "type": "boolean",
+        "bindable": false,
+        "source": "PowerCalApp chat history page"
+      },
+      {
+        "path": "chatHistoryPageStart",
+        "type": "integer",
+        "bindable": false,
+        "source": "WebAiChatHistory.project"
+      },
+      {
+        "path": "chatHistoryPageEnd",
+        "type": "integer",
+        "bindable": false,
+        "source": "WebAiChatHistory.project"
+      },
+      {
+        "path": "chatHistoryChangeKind",
+        "type": "string",
+        "bindable": false,
+        "values": ["RESET", "APPEND", "UNCHANGED"],
+        "source": "PowerCalApp.applyChatConversation"
+      },
+      {
         "path": "chatMessages",
         "type": "array",
         "bindable": false,
@@ -1314,13 +1339,29 @@
       }
     },
     {
+      "name": "loadOlderChatHistory",
+      "label": "Load older AI chat history",
+      "parameters": {
+        "historyRevision": {"type": "integer", "minimum": 0},
+        "endExclusive": {"type": "integer", "minimum": 1, "maximum": 200}
+      },
+      "availability": "AI",
+      "source": "WebSkinHost.decodeBridgeAction → PowerCalApp / WebAiChatHistory Host projection over Core conversation snapshot",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {"type": "object", "properties": {"historyRevision": {"type": "integer", "minimum": 0}, "endExclusive": {"type": "integer", "minimum": 1, "maximum": 200}}, "required": ["historyRevision", "endExclusive"], "additionalProperties": false},
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {"type": "object", "properties": {"name": {"const": "loadOlderChatHistory"}, "historyRevision": {"type": "integer", "minimum": 0}, "endExclusive": {"type": "integer", "minimum": 1, "maximum": 200}}, "required": ["name", "historyRevision", "endExclusive"], "additionalProperties": false}
+    },
+    {
       "name": "sendChat",
       "label": "Send AI chat message",
       "parameters": {
         "text": {
           "type": "string",
           "minLength": 1,
-          "maxLength": 4000
+          "maxLength": 6000
         }
       },
       "availability": "AI",
@@ -1333,7 +1374,7 @@
           "text": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 4000
+            "maxLength": 6000
           }
         },
         "required": [
@@ -1352,7 +1393,7 @@
           "text": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 4000
+            "maxLength": 6000
           }
         },
         "required": [

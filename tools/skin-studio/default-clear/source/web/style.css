@@ -206,7 +206,10 @@ button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outl
 #aiPage:not([hidden]){display:flex;flex-direction:column;
  height:calc(100dvh - 170px);min-height:320px;padding-bottom:8px}
 #aiPage .page-head{flex-shrink:0}
-#aiPage .chat-list{flex:1;min-height:0;max-height:none;overflow-y:auto}
+#aiPage .chat-list{flex:1;min-height:0;max-height:none;overflow-y:auto;overflow-anchor:none}
+.chat-load-older{align-self:center;flex:0 0 auto;padding:8px 14px;border:1px solid var(--line);
+  border-radius:999px;background:var(--surface);color:var(--muted);font:inherit}
+.chat-load-older:disabled{opacity:.55}
 #aiPage #chatForm{flex-shrink:0}
 
 /* Clear's host-driven editor and draft deck. Normal product UI remains skinnable. */

@@ -118,6 +118,13 @@ class WebSkinHostProjectionTest {
         fun decode(payload: String) = decodeBridgeAction(
             """{"version":1,"type":"action","payload":$payload}""")
 
+        assertEquals(WebSkinAction.LoadOlderChatHistory(7, 42),
+            decode("""{"name":"loadOlderChatHistory","historyRevision":7,"endExclusive":42}"""))
+        assertNull(decode("""{"name":"loadOlderChatHistory"}"""))
+        assertNull(decode("""{"name":"loadOlderChatHistory","historyRevision":7,"endExclusive":42,"messageId":"forged"}"""))
+        assertNull(decode("""{"name":"loadOlderChatHistory","historyRevision":-1,"endExclusive":42}"""))
+        assertNull(decode("""{"name":"loadOlderChatHistory","historyRevision":7,"endExclusive":0}"""))
+        assertNull(decode("""{"name":"loadOlderChatHistory","historyRevision":7,"endExclusive":42.5}"""))
         assertEquals(WebSkinAction.ClearChat(7),
             decode("""{"name":"clearChat","historyRevision":7}"""))
         assertEquals(WebSkinAction.RewindChat("local-message-id", 7, true),

@@ -197,6 +197,8 @@ internal sealed interface WebSkinAction {
     ) : WebSkinAction
     /** Request the next host-bounded prefix of the current Memo projection. */
     data object LoadMoreMemo : WebSkinAction
+    /** Request a bounded page before a client cache offset in one exact conversation revision. */
+    data class LoadOlderChatHistory(val historyRevision: Long, val endExclusive: Int) : WebSkinAction
     data class SendChat(val text: String) : WebSkinAction
     data class ClearChat(val historyRevision: Long) : WebSkinAction
     data object ClearAiTemporaryCache : WebSkinAction
@@ -732,6 +734,19 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
         }
         "createMemo" -> if (keys == setOf("name")) WebSkinAction.CreateMemo else null
         "loadMoreMemo" -> if (keys == setOf("name")) WebSkinAction.LoadMoreMemo else null
+        "loadOlderChatHistory" -> {
+            if (keys != setOf("name", "historyRevision", "endExclusive")) return null
+            val rawRevision = payload.opt("historyRevision")
+            val revision = when (rawRevision) {
+                is Int -> rawRevision.toLong()
+                is Long -> rawRevision
+                else -> null
+            }
+            val endExclusive = payload.opt("endExclusive") as? Int ?: return null
+            revision?.takeIf { it >= 0 }
+                ?.takeIf { endExclusive in 1..200 }
+                ?.let { WebSkinAction.LoadOlderChatHistory(it, endExclusive) }
+        }
         "browseMonth" -> {
             if (keys != setOf("name", "deltaMonths")) return null
             val raw = payload.opt("deltaMonths")

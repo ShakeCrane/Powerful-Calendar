@@ -365,12 +365,35 @@ fun PowerCalApp(
     var chatHistoryRevision by remember(aiFeatureApi) {
         mutableLongStateOf(initialChatConversation.revision)
     }
+    var chatHistoryWindowEndExclusive by remember(aiFeatureApi) {
+        mutableIntStateOf(initialChatConversation.messages.size)
+    }
+    var chatHistoryChangeKind by remember(aiFeatureApi) {
+        mutableStateOf("RESET")
+    }
     var webChatPrefillText by remember { mutableStateOf("") }
     var webChatPrefillRevision by remember { mutableLongStateOf(0L) }
     fun applyChatConversation(snapshot: dev.powerfulcalendar.core.api.v1.AiConversationSnapshotV1) {
+        val nextHistory = snapshot.messages.map { it.toAiChatMessage() }
+        val appendOnly = nextHistory.size > chatHistory.size && chatHistory.indices.all { index ->
+            val previous = chatHistory[index]
+            val next = nextHistory[index]
+            previous.messageId == next.messageId && previous.role == next.role &&
+                previous.content == next.content && previous.proposalSource == next.proposalSource
+        }
+        chatHistoryChangeKind = when {
+            appendOnly -> "APPEND"
+            nextHistory != chatHistory -> "RESET"
+            else -> "UNCHANGED"
+        }
         chatConversation = snapshot
-        chatHistory = snapshot.messages.map { it.toAiChatMessage() }
+        chatHistory = nextHistory
         chatHistoryRevision = snapshot.revision
+        chatHistoryWindowEndExclusive = chatHistory.size
+    }
+
+    LaunchedEffect(page) {
+        if (page == Page.AI.name) chatHistoryWindowEndExclusive = chatHistory.size
     }
 
     LaunchedEffect(chatConversation.revision, aiFeatureApi) {
@@ -2264,6 +2287,15 @@ fun PowerCalApp(
                 WebSkinAction.LoadMoreMemo -> if (page == Page.MEMO.name) {
                     loadMoreMemoEntries()
                 }
+                is WebSkinAction.LoadOlderChatHistory -> {
+                    if (page == Page.AI.name && action.historyRevision == chatHistoryRevision &&
+                        action.endExclusive <= chatHistory.size) {
+                        chatHistoryWindowEndExclusive = action.endExclusive
+                    }
+                    // Also publish authoritative state after a stale request so the Web cache
+                    // can keep its newer conversation revision and release the pending request.
+                    WebSkinBridgeRuntime.stateRevision++
+                }
                 is WebSkinAction.ToggleMemo -> if (!aiLocked && editSession == null) {
                     scope.launch {
                         val visible = withContext(Dispatchers.IO) {
@@ -2444,6 +2476,10 @@ fun PowerCalApp(
                 stateTodoEntries.size, memoVisibleLimit
             )
             val stateMemoRemainingCount = (memoTotalEntries - stateMemoVisibleCount).coerceAtLeast(0)
+            val stateChatHistoryPage = WebAiChatHistory.project(
+                if (page == Page.AI.name) chatHistory else emptyList(),
+                if (page == Page.AI.name) chatHistoryWindowEndExclusive else 0
+            )
             JSONObject().put("bridgeVersion", WebSkinBridgeRuntime.VERSION).put("page", page)
                 .put("hostNotice", message?.take(1_000) ?: JSONObject.NULL)
                 .put("hostDataReady", hostDataReady)
@@ -2457,6 +2493,7 @@ fun PowerCalApp(
                 .put("memoRemainingCount", if (page == Page.MEMO.name) stateMemoRemainingCount else 0)
                 .put("chatBusy", chatBusy || aiBusy || pendingWebAiProposalPublish != null)
                 .put("chatHistoryRevision", chatHistoryRevision)
+                .put("chatHistoryChangeKind", chatHistoryChangeKind)
                 .put("chatHistoryActionsAvailable", canEditChatHistory())
                 .put("chatPrefillText", webChatPrefillText)
                 .put("chatPrefillRevision", webChatPrefillRevision)
@@ -2470,9 +2507,10 @@ fun PowerCalApp(
                 .put("chatAttachmentAvailable", canLaunchWebAiAttachmentPicker())
                 .put("chatAttachmentBusy", aiAttachmentPickerBusy ||
                     pendingFileReview != null || pendingImageReview != null)
-                .put("chatMessages", WebAiChatHistory.project(
-                    if (page == Page.AI.name) chatHistory else emptyList()
-                ))
+                .put("chatHistoryHasOlder", page == Page.AI.name && stateChatHistoryPage.hasOlder)
+                .put("chatHistoryPageStart", stateChatHistoryPage.start)
+                .put("chatHistoryPageEnd", stateChatHistoryPage.endExclusive)
+                .put("chatMessages", stateChatHistoryPage.messages)
                 .put("aiProposalReview", if (page == Page.AI.name) {
                     webAiProposalReviewSession?.let { session ->
                         val review = session.interpretation.toAiProposalReviewV1(

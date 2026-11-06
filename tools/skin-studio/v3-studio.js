@@ -1284,6 +1284,8 @@ function simulatedState(){
     memoEntries,memoTruncated,memoRemainingCount:allMemoEntries.length-memoEntries.length,
     chatBusy:false,chatAttachmentBusy:false,
     chatHistoryRevision:mockChatHistoryRevision,
+    chatHistoryHasOlder:false,chatHistoryPageStart:0,chatHistoryPageEnd:chatMessages.length,
+    chatHistoryChangeKind:"UNCHANGED",
     chatHistoryActionsAvailable,
     chatPrefillText:mockChatPrefillText,
     chatPrefillRevision:mockChatPrefillRevision,
@@ -2083,6 +2085,16 @@ function onSkinAction(message){
     const parameters={...p};delete parameters.name;
     try{validateHostActionObject(action,parameters)}
     catch(error){logAction("拒绝无效动作 "+name+"："+error.message);return}
+    if(name==="loadOlderChatHistory"){
+      if(mockPage!=="AI"||!Number.isSafeInteger(p.historyRevision)||p.historyRevision<0||
+        !Number.isInteger(p.endExclusive)||p.endExclusive<1||p.endExclusive>200){
+        logAction("拒绝当前页面中的过期或无效聊天历史续载请求");return;
+      }
+      if(p.historyRevision!==Number(lastState?.chatHistoryRevision??0)){
+        logAction("拒绝过期聊天历史续载请求；Preview 状态未改变");return;
+      }
+      logAction("Preview Mock：当前场景没有更早的聊天消息；没有执行数据写入");return;
+    }
     if(name==="loadMoreMemo"){
       if(Object.keys(p).length!==1||$("scenario").value!=="memo-overflow"||mockPage!=="MEMO"){
         logAction("拒绝当前状态下的 Memo 续载请求");return;
@@ -2414,7 +2426,7 @@ function onSkinAction(message){
       $("mockApprovalText").textContent="Preview Mock：模拟 Host 确认强制解除批次锁；未完成草稿保留，不写入真实数据。";
       $("mockApproval").hidden=false;postState();return;
     }
-    if(name==="sendChat"&&typeof p.text==="string"&&p.text.length<=4000){
+    if(name==="sendChat"&&typeof p.text==="string"&&p.text.length<=6000){
       if(mockAiBatch.phase==="SELECTING"){
         pushMockChat({role:"user",content:p.text});
         if(["全部","所有","全选","全部草稿","所有待处理"].includes(p.text.trim())){

@@ -16,6 +16,8 @@ let aiReviewSelectionId="",aiReviewSelected=new Set();
 let attachmentRequestPending=false;
 let appliedChatPrefillRevision=null;
 let activeChatMessagePress=null;
+let chatHistoryCacheRevision=null,chatHistoryCacheStart=0,chatHistoryCacheEnd=0,chatHistoryCache=[];
+let pendingChatHistoryRequest=null,chatFollowLatestOnRender=false,chatPreserveAnchorOnRender=false;
 let timelineCreateDialog=null;
 let profileEditorSaveRevision=-1,profileEditorDirty=false;
 function closeChatMessageMenus(){
@@ -58,6 +60,72 @@ function flushBridgeOutbox(){
 const send=(name,extra={})=>{
   return postBridgeMessage({version:1,type:"action",payload:{name,...extra}});
 };
+function mergeChatHistoryWindow(hostState){
+  if(String(hostState.page||"").toUpperCase()!=="AI")
+    return {messages:chatHistoryCache,reset:false,prepended:false};
+  const incoming=Array.isArray(hostState.chatMessages)?hostState.chatMessages:[];
+  const start=Math.max(0,Number(hostState.chatHistoryPageStart)||0);
+  const end=Math.max(start,Number(hostState.chatHistoryPageEnd)||0);
+  const revision=String(hostState.chatHistoryRevision??"");
+  const oldStart=chatHistoryCacheStart,oldEnd=chatHistoryCacheEnd;
+  let reset=chatHistoryCacheRevision===null||end-start!==incoming.length;
+  let merged=[];
+  const sameRevision=chatHistoryCacheRevision===revision;
+  const appendRevision=hostState.chatHistoryChangeKind==="APPEND";
+  const canJoin=!reset&&(sameRevision||appendRevision&&end>=oldEnd)&&
+    start<=oldEnd&&end>=oldStart;
+  if(canJoin){
+    for(let index=Math.max(start,oldStart);index<Math.min(end,oldEnd);index++){
+      const previous=chatHistoryCache[index-oldStart],next=incoming[index-start];
+      if(JSON.stringify(previous)!==JSON.stringify(next)){reset=true;break}
+    }
+  }else if(chatHistoryCacheRevision!==null){
+    reset=true;
+  }
+  const historyContinues=!reset&&canJoin;
+  if(historyContinues){
+    const joinedStart=Math.min(start,oldStart),joinedEnd=Math.max(end,oldEnd);
+    for(let index=joinedStart;index<joinedEnd;index++){
+      const fromIncoming=index>=start&&index<end?incoming[index-start]:null;
+      const fromCache=index>=oldStart&&index<oldEnd?chatHistoryCache[index-oldStart]:null;
+      merged.push(fromIncoming||fromCache);
+    }
+    reset=false;
+  }else{
+    merged=incoming.slice();reset=true;
+  }
+  const prepended=!reset&&start<oldStart&&end<=oldStart;
+  if(pendingChatHistoryRequest){
+    const request=pendingChatHistoryRequest;
+    if(revision!==request.revision||end!==request.endExclusive||start<request.endExclusive){
+      pendingChatHistoryRequest=null;
+    }
+  }
+  chatHistoryCache=merged;
+  chatHistoryCacheStart=reset?start:Math.min(start,oldStart);
+  chatHistoryCacheEnd=reset?end:Math.max(end,oldEnd);
+  chatHistoryCacheRevision=revision;
+  return {messages:chatHistoryCache,reset,prepended};
+}
+function requestOlderChatHistory(){
+  if(pendingChatHistoryRequest||state.chatHistoryHasOlder!==true)return;
+  const endExclusive=chatHistoryCacheStart;
+  const historyRevision=Number(state.chatHistoryRevision);
+  if(!Number.isInteger(endExclusive)||endExclusive<=0||endExclusive>200||
+    !Number.isSafeInteger(historyRevision)||historyRevision<0)return;
+  const request={revision:String(historyRevision),endExclusive};
+  pendingChatHistoryRequest=request;
+  if(!send("loadOlderChatHistory",{historyRevision,endExclusive})){
+    pendingChatHistoryRequest=null;return;
+  }
+  window.setTimeout(()=>{
+    if(pendingChatHistoryRequest===request)pendingChatHistoryRequest=null;
+  },5000);
+}
+$("chatMessages").addEventListener("scroll",event=>{
+  const list=event.currentTarget;
+  if(list.scrollHeight>list.clientHeight&&list.scrollTop<=24)requestOlderChatHistory();
+},{passive:true});
 const node=(tag,cls,text)=>{
   const el=document.createElement(tag);
   if(cls)el.className=cls;
@@ -637,7 +705,15 @@ function receive(raw){
     return;
   }
   if(parsed.type!=="state")return;
-  state=parsed.payload||{};currentPage=String(state.page||"TIMELINE").toUpperCase();
+  const incomingState=parsed.payload||{};
+  const previousPage=currentPage;
+  const history=mergeChatHistoryWindow(incomingState);
+  currentPage=String(incomingState.page||"TIMELINE").toUpperCase();
+  if(history.reset||previousPage!=="AI"&&currentPage==="AI")chatFollowLatestOnRender=true;
+  if(history.prepended)chatPreserveAnchorOnRender=true;
+  state={...incomingState,chatMessages:history.messages,
+    chatHistoryHasOlder:currentPage==="AI"&&incomingState.chatHistoryHasOlder===true&&
+      chatHistoryCacheStart>0};
   attachmentRequestPending=Boolean(state.chatAttachmentBusy);
   $("pendingCounter").textContent=Number(state.pendingCount)||"";
   $("aiPendingCount").textContent=`待处理 ${Number(state.pendingCount)||0}`;
@@ -1235,10 +1311,22 @@ function renderMemo(){
 }
 function renderChat(){
   installChatAttachmentControls();
-  const list=$("chatMessages");list.replaceChildren();
+  const list=$("chatMessages");
+  const previousHeight=list.scrollHeight,previousTop=list.scrollTop;
+  const wasAtBottom=previousHeight-list.clientHeight-previousTop<=64;
+  const preserveAnchor=chatPreserveAnchorOnRender;
+  const followLatest=chatFollowLatestOnRender||wasAtBottom;
+  list.replaceChildren();
   closeChatMessageMenus();
   const messages=state.chatMessages||[];
   $("chatEmptyHint").hidden=messages.length>0;
+  if(state.chatHistoryHasOlder===true){
+    const older=node("button","chat-load-older","加载更早的消息");
+    older.type="button";older.disabled=Boolean(pendingChatHistoryRequest);
+    older.setAttribute("aria-label","加载更早的 AI 聊天消息");
+    older.addEventListener("click",requestOlderChatHistory);
+    list.append(older);
+  }
   for(const item of messages){
     const bubble=node("article","chat-bubble "+(item.role==="user"?"user":"assistant"));
     const header=node("div","chat-message-head");
@@ -1250,6 +1338,7 @@ function renderChat(){
     const actions=node("div","chat-message-actions");actions.hidden=true;actions.setAttribute("role","menu");
     actions.setAttribute("aria-label",item.role==="user"?"我的消息操作":"PowerCal AI 消息操作");
     const messageId=typeof item.messageId==="string"?item.messageId:"";
+    bubble.dataset.messageId=messageId;
     const historyRevision=Number(state.chatHistoryRevision)||0;
     const closeActions=()=>{actions.hidden=true;trigger.setAttribute("aria-expanded","false")};
     const openActions=()=>{
@@ -1339,7 +1428,11 @@ function renderChat(){
     appliedChatPrefillRevision=prefillRevision;
   }
   updateChatSendState();
-  list.scrollTop=list.scrollHeight;
+  if(preserveAnchor)list.scrollTop=Math.max(0,previousTop+list.scrollHeight-previousHeight);
+  else if(followLatest)list.scrollTop=list.scrollHeight;
+  else list.scrollTop=previousTop;
+  chatPreserveAnchorOnRender=false;
+  chatFollowLatestOnRender=false;
 }
 function renderAiBatchControls(){
   const batch=state.aiBatch||{},phase=String(batch.phase||"IDLE");

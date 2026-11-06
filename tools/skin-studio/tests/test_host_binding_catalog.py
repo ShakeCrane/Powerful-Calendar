@@ -117,6 +117,14 @@ class HostBindingCatalogTest(unittest.TestCase):
             validate_action_parameters("today", {"jump": True})
 
     def test_chat_message_actions_select_only_host_owned_history(self):
+        validate_action_parameters("loadOlderChatHistory", {"historyRevision": 7, "endExclusive": 42})
+        with self.assertRaisesRegex(ValueError, "unknown parameter"):
+            validate_action_parameters("loadOlderChatHistory", {
+                "historyRevision": 7, "endExclusive": 42, "messageId": "forged"})
+        with self.assertRaisesRegex(ValueError, "missing required"):
+            validate_action_parameters("loadOlderChatHistory", {"historyRevision": 7})
+        with self.assertRaisesRegex(ValueError, "minimum"):
+            validate_action_parameters("loadOlderChatHistory", {"historyRevision": 7, "endExclusive": 0})
         validate_action_parameters("createDraftFromChatMessage", {
             "messageId": "message-1", "historyRevision": 4, "source": "MESSAGE_CONTENT"})
         validate_action_parameters("createDraftFromChatMessage", {
@@ -128,6 +136,17 @@ class HostBindingCatalogTest(unittest.TestCase):
             validate_action_parameters("createDraftFromChatMessage", {
                 "messageId": "message-1", "historyRevision": 4,
                 "source": "MESSAGE_CONTENT", "text": "untrusted"})
+
+    def test_chat_history_pages_are_catalogued_without_exposing_message_content_as_bindable_state(self):
+        fields = {item["path"]: item for item in self.catalog["stateFrame"]["fields"]}
+        self.assertFalse(fields["chatHistoryHasOlder"]["bindable"])
+        self.assertFalse(fields["chatHistoryPageStart"]["bindable"])
+        self.assertFalse(fields["chatHistoryPageEnd"]["bindable"])
+        self.assertFalse(fields["chatHistoryChangeKind"]["bindable"])
+        self.assertFalse(fields["chatMessages"]["bindable"])
+        validate_action_parameters("sendChat", {"text": "x" * 6000})
+        with self.assertRaisesRegex(ValueError, "too long"):
+            validate_action_parameters("sendChat", {"text": "x" * 6001})
         validate_action_parameters("copyChatMessage", {
             "messageId": "message-1", "historyRevision": 4})
         with self.assertRaisesRegex(ValueError, "unknown parameter"):
