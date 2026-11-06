@@ -1293,7 +1293,7 @@ function simulatedState(){
       nowMillis:base,itemLimit:300,truncated:false,items:rows},
     month:{zoneId:"Asia/Shanghai",month:mockMonth,
       selectedDate:mockSelectedMonthDate,gridFrom:mockMonthGridFrom(mockMonth),
-      itemLimit:350,truncated:false,
+      truncated:false,
       items:rows.map(r=>({...r,date:"2026-10-22"}))}};
 }
 function mockMonthGridFrom(value){

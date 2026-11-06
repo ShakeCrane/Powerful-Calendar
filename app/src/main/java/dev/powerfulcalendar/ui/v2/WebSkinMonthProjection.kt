@@ -18,8 +18,6 @@ internal data class WebSkinMonthViewState(
 
 /** Read-only, recurrence-aware, 42-day calendar view. No calendar writes here. */
 internal object WebSkinMonthProjection {
-    const val MAX_OWNERS = 400
-    const val MAX_ITEMS = 350
     const val MIN_YEAR = 1900
     const val MAX_YEAR = 2100
 
@@ -66,13 +64,11 @@ internal object WebSkinMonthProjection {
         val monthDays = (1..view.month.lengthOfMonth()).map { monthFirst.plusDays((it - 1).toLong()) }
         val from = gridFirst.atStartOfDay(zone).toInstant().toEpochMilli()
         val to = gridEnd.atStartOfDay(zone).toInstant().toEpochMilli()
-        val eligible = records
-        val owners = eligible.take(MAX_OWNERS)
-        val occurrences = displayOccurrences(owners, from, to, recurrenceFeatures)
+        val occurrences = displayOccurrences(records, from, to, recurrenceFeatures)
             .sortedWith(compareBy({ it.record.anchorMillis() ?: Long.MAX_VALUE },
                 { it.owner.eventSeq }, { it.key }))
         val items = JSONArray()
-        occurrences.take(MAX_ITEMS).forEach { occurrence ->
+        occurrences.forEach { occurrence ->
             val display = occurrence.record
             val visibleDates = monthDays.filter { day ->
                 if (display.isDateOnlyDeadline()) display.deadlineDate == day.toString()
@@ -110,9 +106,7 @@ internal object WebSkinMonthProjection {
             .put("month", monthFirst.toString().take(7))
             .put("selectedDate", view.selectedDate.toString())
             .put("gridFrom", gridFirst.toString())
-            .put("itemLimit", MAX_ITEMS)
-            .put("truncated", eligible.size > MAX_OWNERS ||
-                occurrences.size > MAX_ITEMS)
+            .put("truncated", false)
             .put("items", items)
     }
 }

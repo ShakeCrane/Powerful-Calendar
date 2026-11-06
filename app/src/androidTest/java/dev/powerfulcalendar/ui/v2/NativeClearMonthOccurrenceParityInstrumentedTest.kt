@@ -2302,4 +2302,154 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
             }
         }
     }
+
+    @Test
+    fun nativeAndClearMonthKeepDenseAgendaItemsBeyondWebProjectionCaps() {
+        val storage = compose.activity.applicationContext
+        val namespace = "pc-month-dense-${UUID.randomUUID()}"
+        val context = IsolatedAppContext(compose.activity, storage, namespace)
+        val database = "month-dense.db"
+        val marker = File(storage.cacheDir, "$namespace/fixture.json")
+        val store = PowerStore(context, database)
+        val zone = ZoneId.systemDefault()
+        val month = YearMonth.from(LocalDate.now(zone))
+        val days = month.lengthOfMonth()
+        val eventCount = 401
+        val targetDate = month.atEndOfMonth()
+        val targetSeq = eventCount / days * days
+        val targetTitle = "NATIVE_095_DENSE_MONTH_$targetSeq"
+        for (sequence in 1..eventCount) {
+            val date = month.atDay((sequence - 1) % days + 1)
+            val start = date.atTime(9, 0).atZone(zone).toInstant()
+            val form = DraftForm(
+                kind = TemporalKind.ACTIVITY,
+                title = "NATIVE_095_DENSE_MONTH_$sequence",
+                startText = DraftForm.formatInstant(start.toEpochMilli(), zone),
+                endText = DraftForm.formatInstant(start.plusSeconds(3600).toEpochMilli(), zone),
+                zoneId = zone.id,
+                reminderMinutes = -1
+            )
+            assertTrue("Dense Month fixture $sequence must commit only in the isolated Store",
+                store.createFormalEvent(form, "dense-month-$namespace-$sequence") is
+                    PowerStore.CommitOutcome.Committed)
+        }
+        val expectedLastDayCount = eventCount / days +
+            if (days <= eventCount % days) 1 else 0
+        val fixtureCounts = listOf(
+            store.draftCount(), store.pendingCount(), store.identityCount(), store.commitCount(),
+            store.nextSequencePreview(), store.nextQueueOrderPreview(), store.all().size.toLong()
+        )
+        val fixtureRecords = store.all().map { Triple(it.eventSeq, it.revision, it.title) }
+        var web: WebView? = null
+
+        try {
+            context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            PowerCalSkinRegistry.reset()
+            SkinPackageManager(context).selectNativeForEmergencyRecovery()
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides context) {
+                        PowerCalTheme { PowerCalApp(store) }
+                    }
+                }
+            }
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithText("日历").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("日历").performTouchInput { click() }
+            val nativeDateDescription = "$targetDate，$expectedLastDayCount 项" +
+                if (targetDate == LocalDate.now(zone)) "，今天" else ""
+            compose.onNodeWithContentDescription(nativeDateDescription).assertExists()
+            compose.onNodeWithContentDescription(nativeDateDescription).performTouchInput { click() }
+            compose.onNode(hasScrollToIndexAction())
+                .performScrollToNode(hasText(targetTitle, substring = true))
+            compose.onNodeWithText(targetTitle, substring = true).assertExists()
+            val nativeCapture = captureDisplayScreenshot("native095-month-dense-native.png")
+            val artifactContext = InstrumentationRegistry.getInstrumentation().targetContext
+            val nativeArtifact = nativeCapture.copyTo(
+                File(artifactContext.cacheDir, nativeCapture.name), overwrite = true
+            )
+            println("NATIVE_095_MONTH_DENSE_SCREENSHOT package=${artifactContext.packageName} " +
+                "path=${nativeArtifact.absolutePath} bytes=${nativeArtifact.length()}")
+
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            SkinPackageManager(context).select("powercal-clear-default")
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides context) {
+                        PowerCalTheme { PowerCalApp(store) }
+                    }
+                }
+            }
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val clearWeb = requireNotNull(web)
+            awaitJs(clearWeb,
+                "!!window.PowerCalSkin&&!!document.querySelector('.clear-tabbar [data-action=month]')")
+            tapClear(clearWeb, ".clear-tabbar [data-action='month']")
+            awaitJs(clearWeb, "!document.querySelector('#monthPage').hidden")
+            compose.waitUntil(30_000) {
+                currentBridgeState().optJSONObject("month")
+                    ?.optJSONArray("items")?.length() == eventCount
+            }
+            val hostMonth = currentBridgeState().getJSONObject("month")
+            assertEquals(eventCount, hostMonth.getJSONArray("items").length())
+            assertFalse(hostMonth.optBoolean("truncated"))
+            assertEquals(fixtureCounts, listOf(
+                store.draftCount(), store.pendingCount(), store.identityCount(), store.commitCount(),
+                store.nextSequencePreview(), store.nextQueueOrderPreview(), store.all().size.toLong()
+            ))
+
+            tapClear(clearWeb, "#monthGrid .month-cell[data-date='$targetDate']")
+            awaitJs(clearWeb,
+                "document.querySelectorAll('#monthAgenda .agenda-event').length===$expectedLastDayCount")
+            val targetSelector = "#monthAgenda .agenda-event[data-event-seq='$targetSeq']"
+            awaitJs(clearWeb, "!!document.querySelector(${JSONObject.quote(targetSelector)})")
+            evaluate(clearWeb, "document.querySelector(${JSONObject.quote(targetSelector)})" +
+                ".scrollIntoView({block:'center'})")
+            val webCapture = captureWindowScreenshot(clearWeb, "native095-month-dense-web.png")
+            val webArtifact = webCapture.copyTo(
+                File(artifactContext.cacheDir, webCapture.name), overwrite = true
+            )
+            println("NATIVE_095_MONTH_DENSE_SCREENSHOT package=${artifactContext.packageName} " +
+                "path=${webArtifact.absolutePath} bytes=${webArtifact.length()}")
+            val tapEvidence = tapClear(clearWeb, targetSelector)
+            assertTrue("Dense Month event tap must be trusted: $tapEvidence",
+                tapEvidence.optBoolean("trusted"))
+            compose.waitUntil(20_000) {
+                val editor = currentBridgeState().optJSONObject("editing")
+                    ?.optJSONObject("editor")
+                editor?.optBoolean("open") == true && editor.optLong("eventSeq") == targetSeq.toLong()
+            }
+            assertEquals(targetSeq.toLong(), currentBridgeState().getJSONObject("editing")
+                .getJSONObject("editor").getLong("eventSeq"))
+            assertEquals(fixtureRecords, store.all().map { Triple(it.eventSeq, it.revision, it.title) })
+            assertEquals(fixtureCounts, listOf(
+                store.draftCount(), store.pendingCount(), store.identityCount(), store.commitCount(),
+                store.nextSequencePreview(), store.nextQueueOrderPreview(), store.all().size.toLong()
+            ))
+            println("NATIVE_095_MONTH_DENSE_PARITY package=${compose.activity.packageName} " +
+                "items=${hostMonth.getJSONArray("items").length()} " +
+                "targetDate=$targetDate targetDayCount=$expectedLastDayCount targetSeq=$targetSeq " +
+                "nativeAndWebRowsMatch=true webTapTrusted=${tapEvidence.optBoolean("trusted")} " +
+                "storeUnchanged=true")
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            cleanupColdMonthFixture(storage, context, namespace, database, marker)
+        }
+    }
 }

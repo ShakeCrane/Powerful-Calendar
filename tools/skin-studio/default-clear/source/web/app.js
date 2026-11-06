@@ -1184,7 +1184,6 @@ function renderMonth(){
     ].filter(Boolean).join("，"));
     agenda.append(button);
   }
-  if(month.truncated)agenda.append(node("p","quiet","本月事件超过投影上限，部分数据未显示"));
   $("viewMonthDate").dataset.date=month.selectedDate||firstIso;
 }
 function renderMemo(){
