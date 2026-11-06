@@ -650,3 +650,24 @@ Raw/Web fixture Store 均为 drafts=0, commits=8, identities=8，无夹具外写
 - 原始 APK 与最终 Web 页面/阈值截图、逐次日志、测试 XML 和所有尝试记录见 `.local/android-test/reports/native095-month-page-swipe-20261106/manifest.md`。问题报告：`docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-PAGE-SWIPE-20261106.md`。
 
 本窄切片没有签核 Month 重复投影上限（Web `MAX_OWNERS=400`、`MAX_ITEMS=350`）、月份状态的完整视觉一致性、所有事件类别与跨月重复渲染、其它页面、TalkBack 或物理/OEM 兼容。原始与当前应用截图使用独立数据库；配对交互测试使用隔离同数据 fixture，手势前后 Store 无变更。Native 恢复、唯一默认 Skin ID 和生产 Cutover 均未改变；Product Cutover 仍 HOLD。
+
+## Month 完整投影（2026-11-06）
+
+**投影上限修复窄切片 PASS；Month 页面与整体 Native-to-Web parity 仍 PARTIAL。** 本节更新上一节列出的 `MAX_OWNERS=400` / `MAX_ITEMS=350` 缺口，不替代 Month 其余视觉、交互及原始 APK 全页对照。
+
+`WebSkinMonthProjection.build()` 之前先取前 400 个 owner，再取前 350 个可见 occurrence；当月较密集时，Core 已返回而 Native 能展示的记录会在 Web 投影处静默消失。旧版 `truncated` / `itemLimit` 只报告截断，不能使两端内容等价。Core `StoreCalendarFeatureApiV1.queryWindow` 本身分页读取全部匹配记录；这次没有更改 Store、Core API、重复规则或正式 Host action。
+
+移除 Web 月历 owner 和 occurrence 截断；保留兼容字段 `truncated=false`。Studio 的模拟 Month state 不再携带 350 条上限，Clear 也不再显示“部分数据未显示”的旧告警。唯一正式包仍为 `powercal-clear-default.pcskin`，通过 `tools/skin-studio/build_default_clear.py` 从源码重建。
+
+### 测试与同数据 Android 结果
+
+- 新增 3 个 JVM 回归：超过旧 350 occurrence 上限、超过 400 owner 上限，以及 12 条每日重复系列在 31 天中形成 372 个 occurrence。Web 与 Native `rowKey` 顺序逐项相等且没有截断标记。修改前确定性复现为 Native 351、Web 350；最终完整 JVM 门禁 981/981 通过。
+- 隔离 API 35 AVD `PowerCal_Wave2_QA35_20261104` / `emulator-5556`（1080×2400、420 dpi、System WebView 124.0.6367.219）配对执行 Native Compose 参考路由和 Web v3。401 条确定性 ACTIVITY fixture 全部投影；2026-11-30 日历格对应 13 条 agenda 行；真实 WebView 触摸打开 seq 390。测试断言两侧列表身份/顺序匹配，触摸后 drafts、commits、identities、sequence、queue order 和事件快照均未变化。
+- 随测试保存两张实际设备截图：`native095-month-dense-native.png` SHA-256 `0D3EDE628E2F525478FE4E714CAB10046430F702B9BAD403904F1129A81EFD62`；`native095-month-dense-web.png` SHA-256 `F1D4CCBE4B37EB2CC2736CD7260527346918E146B885CF5360E592BA2C9FAFB4`，均为 1080×2400。
+- Studio v3 preview 11/11、单默认分发 2/2、修改过的 JS 语法检查与 Month selection browser E2E 均通过。完整串行 Gradle 门禁还包括两项 source boundary、Debug assemble、Lint 与 AndroidTest Kotlin 编译。
+
+### 证据边界
+
+设备截图与交互来自隔离测试 App 中的 Native Compose 参考路由和正式 Web v3 Runtime；它们没有在同一 401 条夹具上运行独立冻结原始 APK。因此本切片只签核数据投影完整性和真实 Web 点击目标，不声称 raw-APK 视觉等价或 Month 页面完整签核。截图、摘要日志、APK/Skin 哈希和命令记录见 `.local/android-test/reports/native095-month-projection-20261106/manifest.md`；独立问题记录见 `docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-PROJECTION-CAPS-20261106.md`。
+
+当前明确的下一项小差异是：使用相同 Camera、时区与定时 DEADLINE fixture，对照冻结原始 APK 和 Web v3 的时间标记及框外标题矩形，并验证点击目标。AI 输入/历史长度、编辑器操作区和其余页面仍是独立未关闭项。Native 安全恢复与 Product Cutover HOLD 不变。

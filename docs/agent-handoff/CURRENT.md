@@ -7,23 +7,23 @@ OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: 7e98e393ddf075db206e37a7bfa599afea6f47bd (Native 0.9.5 Month full-page swipe hit region, strict threshold and click suppression; narrow parity slice)
-LATEST_VERIFIED_HEAD: 7e98e393ddf075db206e37a7bfa599afea6f47bd (serial Gradle gate 978/978 JVM; boundaries, assembleDebug, lintDebug and AndroidTest compile PASS; Native/Clear Month swipe instrumentation 1/1 PASS; Studio distribution 2/2, preview 11/11 and browser E2E PASS)
+LATEST_CODE_HEAD: 2e9651c6a8cbd1cdf22f7db3a5046c3a3243d301 (remove Web Month owner/occurrence projection caps; Month parity remains narrow PASS only)
+LATEST_VERIFIED_HEAD: 2e9651c6a8cbd1cdf22f7db3a5046c3a3243d301 (serial full Gradle gate 981/981 JVM; boundaries, assembleDebug, lintDebug and AndroidTest compile PASS; dense Month Native/Clear API 35 instrumentation 1/1 PASS; Studio preview 11/11, distribution 2/2, Node syntax and month-selection browser E2E PASS)
 CURRENT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
 TASK_STATUS: IN_PROGRESS
 PRODUCT_CUTOVER: HOLD
 TASK_BASE_HEAD: e41246d7ebe5b329adbdc657bd3e53735695efa1
-WORKING_APK_SHA256: 479B01BF9D4D8DC2CFD30839047DAFA7025DA7BE75A327732DBE75DF645181EB
-WORKING_DEFAULT_SKIN_SHA256: E5CA9803AAD5A450AE639773477A7F2EDEF047334CFA567527B2E3296738EAB8
+WORKING_APK_SHA256: C36388596CB759BD048A319BC36790BF04FB4F4D33A8962050A4E13F95CC4F34
+WORKING_DEFAULT_SKIN_SHA256: 974A63A4E8EC1A755DCD3ACB6A1F2E32390F588EA31E157E62586DEA6BE4B50A
 WORKING_DEFAULT_SKIN_ID: powercal-clear-default
 NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; implementation and full parity remain IN PROGRESS)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
-LAST_COMPLETED_TASK: Native 0.9.5 Month full-page swipe region, platform touch slop, strict threshold and click suppression (narrow PASS; Month and overall parity remain PARTIAL)
-LAST_COMPLETED_COMMIT: 7e98e393ddf075db206e37a7bfa599afea6f47bd
+LAST_COMPLETED_TASK: Native 0.9.5 Month projection cap removal (narrow PASS; Month and overall parity remain PARTIAL)
+LAST_COMPLETED_COMMIT: 2e9651c6a8cbd1cdf22f7db3a5046c3a3243d301
 LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; see audit and latest Android evidence)
-LAST_ATTEMPTED_COMMIT: 7e98e393ddf075db206e37a7bfa599afea6f47bd (Month page swipe slice; broader parity task remains IN_PROGRESS)
+LAST_ATTEMPTED_COMMIT: 2e9651c6a8cbd1cdf22f7db3a5046c3a3243d301 (Month projection slice; broader parity task remains IN_PROGRESS)
 NEXT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
-NEXT_ACTION: Audit and reproduce the remaining Month recurrence projection boundary: WebSkinMonthProjection caps owners at 400 and displayed occurrences at 350, while the Native projection calls displayOccurrences on its supplied records. Determine the upstream query limits and whether a deterministic dense-month fixture loses visible items; only then choose a bounded parity fix. Month swipe is now a narrow PASS, while Month, Memo, Timeline and whole-surface Native-to-Web parity remain PARTIAL. Product Cutover remains HOLD.
+NEXT_ACTION: Measure the timed DEADLINE point-title marker and title rectangle on the frozen raw 0.9.5-rc.1 APK versus Web v3 using the same API 35 device settings, time zone, camera, and deterministic event; verify the actual tap target and preserve screenshots. Do not infer parity from the ALARM-title slice. Month projection caps are now removed and dense-row parity is a narrow PASS; Month, Memo, Timeline and whole-surface Native-to-Web parity remain PARTIAL. AI history/input limits and editor-shell geometry remain open independent differences. Product Cutover remains HOLD.
 LAST_TASK_EVIDENCE:
   NATIVE_095_ALARM_POINT_TITLE:
     status: PASS (ALARM title typography, type color and title-box geometry only; Timeline remains PARTIAL)
@@ -657,6 +657,17 @@ LATEST_VERIFIED_EVIDENCE:
     screenshots: frozen header 208/214px 3A1125A5BA1A86A866C198FB292E3C7C8246C216FF2A4B4EF376C3254455CC29 / 59618D27C515C9323AFE8C3D772B4BE6524C1C4F2B89254B3D6BE5CDB78E901C; Web header 208/214px 50593851EDB1A0D1A49A57DF173401BE5F26B58D6B03E0ADFA4510F400BCA486 / B0D9BCAB797095432E4425AADA9ECAA9C9955ED83FE75A6E63E7ECEB1CB34070
     evidence: .local/android-test/reports/native095-month-page-swipe-20261106/manifest.md; docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md; docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-PAGE-SWIPE-20261106.md
     limitations: dense recurrence projection limits, all other Month visuals/states, other Native pages, accessibility and physical/OEM parity remain unverified; Product Cutover HOLD
+  NATIVE_095_MONTH_PROJECTION_CAPS:
+    status: PASS (Web projection retains all supplied owners/occurrences; Month page and full Native-to-Web parity remain PARTIAL)
+    code_commit: 2e9651c6a8cbd1cdf22f7db3a5046c3a3243d301
+    tests: serial Gradle full gate PASS; 981/981 JVM, 0 failures/errors/skips; source boundaries, assembleDebug, lint, AndroidTest compile PASS; dense Native/Clear API 35 instrumentation 1/1 PASS; Studio v3 preview 11/11, single-default distribution 2/2, changed-JS syntax and browser E2E PASS
+    apk_sha256: C36388596CB759BD048A319BC36790BF04FB4F4D33A8962050A4E13F95CC4F34
+    default_skin_sha256: 974A63A4E8EC1A755DCD3ACB6A1F2E32390F588EA31E157E62586DEA6BE4B50A (411630 bytes, 10 files; APK has exactly one default .pcskin and source/APK asset hashes match)
+    android: isolated PowerCal_Wave2_QA35_20261104 / emulator-5556, API 35, 1080x2400, 420dpi, System WebView 124.0.6367.219
+    behavior: before-fix repro returned 350 for a Native 351-row case; after fix 401 owner rows match Native, November 30 shows 13 events, touch opens seq 390, Store snapshot unchanged; three JVM cases cover former 350/400 boundaries and 372 recurring instances
+    screenshots: Native Compose reference 0D3EDE628E2F525478FE4E714CAB10046430F702B9BAD403904F1129A81EFD62; WebView F1D4CCBE4B37EB2CC2736CD7260527346918E146B885CF5360E592BA2C9FAFB4
+    evidence: .local/android-test/reports/native095-month-projection-20261106/manifest.md; docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-PROJECTION-CAPS-20261106.md; docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md
+    limitation: paired screenshot uses the in-app Native Compose reference route, not the standalone original APK on the same dense fixture; visual/layout signoff and all non-projection Month states remain open; Product Cutover HOLD
 BLOCKERS: Whole-surface Native-to-Web parity remains incomplete; multiple Timeline states and Native page/component comparisons remain. TalkBack focus order, forced checkpoint-I/O failure, physical/OEM reminder delivery and live AI provider reliability remain NOT TESTED. The Studio Python suite was 86/89: three existing route/recovery source-shape assertions fail against current architecture. Product Cutover remains HOLD.
 
 AUTHORITATIVE_PLAN: docs/POWERCAL_SINGLE_DEFAULT_SKIN_EXECUTION_PLAN_2026-11-03_R2.md
