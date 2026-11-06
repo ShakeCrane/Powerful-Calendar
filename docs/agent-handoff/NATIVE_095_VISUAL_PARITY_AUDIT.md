@@ -771,3 +771,17 @@ Issue：`docs/issues/PC-ISSUE-SEPARATION-NATIVE-AI-HISTORY-PROJECTION-20261106.m
 The earlier AI history rows record the pre-fix reproduction. The narrow defect is now fixed and verified: the isolated API 35 WebView displayed all 42 deterministic messages in order, including the complete 1945-character tail and end sentinel. Browser E2E verified 84-message merging across a delayed stale-page request and concurrent append, stable ordering, a 0 px prepend anchor delta, conditional follow-to-bottom, and cache invalidation on reset. See `docs/issues/PC-ISSUE-SEPARATION-NATIVE-AI-HISTORY-PROJECTION-20261106.md` and `.local/android-test/reports/native095-ai-history-paging-20261106/`.
 
 This is not a whole-page AI sign-off. The Web bubble/role-label visual difference, menu/attachment/proposal/error states, and real-provider behavior remain open; Product Cutover remains `HOLD`.
+
+## 2026-11-07 AI message bubble and role-label chrome
+
+**Narrow PASS:** the light-mode bubble/role-label presentation is now aligned to the frozen 0.9.5-rc.1 Native implementation. The change is confined to the canonical default Skin stylesheet and a WebView regression assertion; Core/Host behavior is unchanged.
+
+- Native source: `AiChatScreen.kt` and `NativeSkinThemeDefaults.kt` at frozen source `b1f7629f0c52812e1887443872f43aa6c49908c4`. Web source: `tools/skin-studio/default-clear/source/web/native-095.css`.
+- Both screenshots use the same deterministic 42-message history, API 35, 1080×2400 / 420 dpi. The actual WebView is System WebView `124.0.6367.219`; this is not a Studio Preview.
+- Frozen Native and Web agree on the measured fills, text/role colors, font metrics, asymmetric 16dp/4dp corners, absent shadow, 10% user inset and 8dp message gap. The first five user-bubble exact-color bounds differ by at most 2 physical pixels vertically and 1 pixel at the left edge. The raw screenshot hashes and all measured boxes are in `.local/android-test/reports/native095-ai-bubbles-20261107/manifest.md`; this is measured close alignment, not pixel identity.
+- API 35 instrumented test `clearChatMessagesMatchNativeLabelsAndUseHostOwnedMenuActions` passed 1/1 on Wave2 and asserted light/dark computed colors, geometry, Host-owned menu/copy and unchanged Store counters. Full serial Gradle gate passed 987/987 JVM with both source boundaries, APK, Lint and AndroidTest compile.
+- Official builder verification confirms exactly one `powercal-clear-default.pcskin`, source/APK byte-identical. APK SHA-256 `42edab078121d1ca69c80cf828b7406af868d04214baacb610276c1edfc7b849`; Skin SHA-256 `ee2bc91820f6222f4ed820f35befada7e97b48a43dbc144496f610cc673ce0c8`.
+
+The connected Android test command also ran automatically on `PowerCal_Native095_RawFixture_20261106` / `emulator-5590`; this was outside the intended single-device scope. It passed 1/1, but this audit does not claim the second AVD was unchanged. Manual fixture operations and cleanup were confined to Wave2 / `emulator-5556`; exact cleanup and the device-scope incident are documented in the Issue and evidence manifest.
+
+The AI page remains `PARTIAL`: menu visual layout, attachments, proposal/error/retry states, composer, real-provider behavior and whole-page interaction comparison remain open. Next finite comparison: frozen Native and Web message-action menu bounds, typography and touch behavior with the same synthetic history. Product Cutover remains `HOLD`.

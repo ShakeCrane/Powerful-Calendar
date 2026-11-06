@@ -383,6 +383,39 @@ class PowerCalAiProposalReviewWebViewInstrumentedTest {
             awaitJs(view, "document.querySelectorAll('#chatMessages .chat-message-role')[0]?.textContent==='我' && " +
                 "document.querySelectorAll('#chatMessages .chat-message-role')[1]?.textContent==='PowerCal AI' && " +
                 "document.querySelector('#chatMessages .chat-message-proposal')?.textContent==='从此消息创建事件草稿'")
+            println("NATIVE_095_AI_CHAT_STYLE " + evaluate(view,
+                "(()=>{const list=document.querySelector('#chatMessages'),[user,assistant]=list.querySelectorAll('.chat-bubble')," +
+                    "u=user.getBoundingClientRect(),a=assistant.getBoundingClientRect(),l=list.getBoundingClientRect()," +
+                    "us=getComputedStyle(user),as=getComputedStyle(assistant),rs=getComputedStyle(user.querySelector('.chat-message-role'))," +
+                    "cs=getComputedStyle(user.querySelector('.chat-message-content'));return JSON.stringify({" +
+                    "dpr:devicePixelRatio,listLeft:l.left,listWidth:list.clientWidth,userLeft:u.left,assistantLeft:a.left," +
+                    "userBg:us.backgroundColor,userInk:us.color,assistantBg:as.backgroundColor,assistantInk:as.color," +
+                    "roleInk:rs.color,userRadius:us.borderRadius,assistantRadius:as.borderRadius,shadow:us.boxShadow," +
+                    "fontSize:cs.fontSize,lineHeight:cs.lineHeight})})()"))
+            awaitJs(view, "(()=>{const list=document.querySelector('#chatMessages')," +
+                "[user,assistant]=list.querySelectorAll('.chat-bubble')," +
+                "userRect=user.getBoundingClientRect(),assistantRect=assistant.getBoundingClientRect()," +
+                "listRect=list.getBoundingClientRect(),userStyle=getComputedStyle(user)," +
+                "assistantStyle=getComputedStyle(assistant),roleStyle=getComputedStyle(user.querySelector('.chat-message-role'))," +
+                "contentStyle=getComputedStyle(user.querySelector('.chat-message-content'))," +
+                "close=(a,b)=>Math.abs(a-b)<2;const light= " +
+                "userStyle.backgroundColor==='rgb(220, 229, 255)'&&userStyle.color==='rgb(11, 42, 102)'&&" +
+                "assistantStyle.backgroundColor==='rgb(239, 242, 248)'&&assistantStyle.color==='rgb(17, 21, 28)'&&" +
+                "roleStyle.color==='rgb(74, 82, 97)'&&userStyle.borderTopLeftRadius==='16px'&&" +
+                "userStyle.borderTopRightRadius==='16px'&&userStyle.borderBottomRightRadius==='4px'&&" +
+                "userStyle.borderBottomLeftRadius==='16px'&&assistantStyle.borderTopLeftRadius==='16px'&&" +
+                "assistantStyle.borderTopRightRadius==='16px'&&assistantStyle.borderBottomRightRadius==='16px'&&" +
+                "assistantStyle.borderBottomLeftRadius==='4px'&&userStyle.boxShadow==='none'&&" +
+                "contentStyle.fontSize==='14px'&&contentStyle.lineHeight==='20px'&&" +
+                "close(userRect.top,63)&&close(userRect.height,54.4)&&" +
+                "close(assistantRect.left,listRect.left)&&close(userRect.left-listRect.left,list.clientWidth*.1);" +
+                "let dark;try{document.documentElement.classList.add('dark');dark=" +
+                "getComputedStyle(user).backgroundColor==='rgb(27, 58, 122)'&&" +
+                "getComputedStyle(user).color==='rgb(220, 229, 255)'&&" +
+                "getComputedStyle(assistant).backgroundColor==='rgb(23, 29, 39)'&&" +
+                "getComputedStyle(assistant).color==='rgb(230, 234, 242)'&&" +
+                "getComputedStyle(user.querySelector('.chat-message-role')).color==='rgb(180, 188, 203)';}" +
+                "finally{document.documentElement.classList.remove('dark');}return light&&dark;})()")
 
             val before = listOf(store.all().size.toLong(), store.draftCount(), store.pendingCount().toLong(),
                 store.commitCount(), store.identityCount(), store.nextSequencePreview())

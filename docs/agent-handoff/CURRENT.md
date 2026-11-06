@@ -7,23 +7,23 @@ OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: 3ee4e79dd956a5e419adea8400be6ba76601a651 (bounded AI history pages, stale request guard, and reader anchoring)
-LATEST_VERIFIED_HEAD: 3ee4e79dd956a5e419adea8400be6ba76601a651 (serial full Gradle gate 987/987 JVM PASS; both source boundaries, assembleDebug, lintDebug, AndroidTest compile PASS; API 35 WebView history paging and Studio bridge E2E PASS)
+LATEST_CODE_HEAD: 14994ff0774ed360afb8ad3c5dafe1ee4aaee890 (baseline for the current AI bubble/role-label parity slice; implementation commit pending)
+LATEST_VERIFIED_HEAD: 14994ff0774ed360afb8ad3c5dafe1ee4aaee890 plus current working-tree slice (serial Gradle gate 987/987 JVM PASS; boundaries, assembleDebug, lintDebug and AndroidTest compile PASS; API 35 screenshot and targeted WebView test PASS)
 CURRENT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
 TASK_STATUS: IN_PROGRESS
 PRODUCT_CUTOVER: HOLD
-TASK_BASE_HEAD: e41246d7ebe5b329adbdc657bd3e53735695efa1
-WORKING_APK_SHA256: acabdf1fbb3df1c998d6b743851b01f3289042aa1159c8871364ca21063614ae
-WORKING_DEFAULT_SKIN_SHA256: cd09d73f021fd34bc3ce56534df5b72e5ba26a8bba87e6e34dc3ffda2bc4e0c8
+TASK_BASE_HEAD: 14994ff0774ed360afb8ad3c5dafe1ee4aaee890
+WORKING_APK_SHA256: 42edab078121d1ca69c80cf828b7406af868d04214baacb610276c1edfc7b849
+WORKING_DEFAULT_SKIN_SHA256: ee2bc91820f6222f4ed820f35befada7e97b48a43dbc144496f610cc673ce0c8
 WORKING_DEFAULT_SKIN_ID: powercal-clear-default
 NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; implementation and full parity remain IN PROGRESS)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
-LAST_COMPLETED_TASK: Native 0.9.5 AI history paging, stale-request protection, and scroll anchoring (narrow PASS; AI page remains PARTIAL)
-LAST_COMPLETED_COMMIT: 3ee4e79dd956a5e419adea8400be6ba76601a651
+LAST_COMPLETED_TASK: Native 0.9.5 AI message bubble/role-label appearance (narrow PASS; AI page remains PARTIAL)
+LAST_COMPLETED_COMMIT: implementation commit pending; see issue PC-ISSUE-SEPARATION-NATIVE-AI-BUBBLE-CHROME-20261107
 LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; see audit and latest Android evidence)
-LAST_ATTEMPTED_COMMIT: 3ee4e79dd956a5e419adea8400be6ba76601a651 (AI history slice verified; broader native visual parity remains IN_PROGRESS)
+LAST_ATTEMPTED_COMMIT: 14994ff0774ed360afb8ad3c5dafe1ee4aaee890 (AI bubble parity working tree verified; broader Native visual parity remains IN_PROGRESS)
 NEXT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
-NEXT_ACTION: Compare frozen Native 0.9.5 and current Web AI bubble/role-label colors, shape, geometry, and typography using the same synthetic messages on the same API 35 AVD. Preserve the verified paging and scroll behavior; implement only the measured gap in the canonical Clear project. Keep AI page and overall Native parity PARTIAL and Product Cutover HOLD.
+NEXT_ACTION: Compare frozen Native and Web AI message-action menu geometry, typography and touch behavior on the same synthetic history; restrict Android execution explicitly to emulator-5556. Preserve Host-owned actions and verified history paging; AI page remains PARTIAL and Product Cutover HOLD.
 LAST_TASK_EVIDENCE:
   NATIVE_095_AI_INPUT_LIMIT:
     status: PASS (6000-code-unit composer boundary only; AI page and overall Native parity remain PARTIAL)
@@ -738,7 +738,20 @@ LATEST_VERIFIED_EVIDENCE:
     behavior: exact same timed Deadline title/date/time; both visible-title taps opened that Deadline editor; no Save action was issued. Raw target [267,1112]-[477,1259]; Web after fix [267,1109]-[490,1262]. Pixel ink bbox Native (278,1210)-(459,1233), Web (279,1209)-(463,1232); point line Native (267,1254)-(487,1258), Web (268,1257)-(488,1259)
     evidence: .local/android-test/reports/native095-deadline-title-20261106/manifest.md; docs/issues/PC-ISSUE-SEPARATION-NATIVE-TIMED-POINT-HITBOX-20261106.md; docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md
     limitation: Native retains point events within an 80px viewport margin; Web host/runtime still omits events outside exact visibleStart/visibleEnd. Web accessibility target is 6px taller and 13px wider in this AVD. Timeline/full-surface parity remains PARTIAL; Product Cutover HOLD
-BLOCKERS: Whole-surface Native-to-Web parity remains incomplete. The bounded viewport-edge point candidates are implemented; remaining Timeline states include dense/multilane, locked, empty and broader accessibility behavior. Month, Memo (including the Web-only load-more control), editor/Draft Deck geometry, AI composer/history (including 6000-vs-4000 input limit), Settings routes and full page state comparisons remain open. Studio Python suite has three unrelated route/recovery source-shape failures; full browser E2E has a pre-Timeline palette assertion failure. Forced checkpoint-I/O failure, physical/OEM reminder delivery and live AI provider reliability remain NOT TESTED. Product Cutover remains HOLD.
+  NATIVE_095_AI_BUBBLE_CHROME:
+    status: NARROW PASS (AI page remains PARTIAL)
+    source_baseline: b1f7629f0c52812e1887443872f43aa6c49908c4
+    reference_apk_sha256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
+    current_apk_sha256: 42edab078121d1ca69c80cf828b7406af868d04214baacb610276c1edfc7b849
+    default_skin_sha256: ee2bc91820f6222f4ed820f35befada7e97b48a43dbc144496f610cc673ce0c8 (10 files, exactly one APK .pcskin, source/APK bytes match)
+    android: frozen APK screenshot and updated Web v3 screenshot at API 35, 1080x2400, 420dpi; WebView 124.0.6367.219; manual Web capture on PowerCal_Wave2_QA35_20261104/emulator-5556
+    geometry: same 42 synthetic messages; first user bubble x/y fill bounds Native [134..588,293..435], Web [133..588,293..435]; first five messages max vertical edge delta 2 physical px, left edge delta 1 px
+    tests: serial full Gradle gate 987/987 JVM, zero failures/errors/skips; both source boundaries, assembleDebug, lintDebug, AndroidTest compile PASS; target WebView method 1/1 PASS
+    screenshots: frozen Native B82A5AC4C43E8AE74F3C356E73F808F20381131E8B36685189833F2F7765F157; current Web 2E540564706F69E0FCD188E1A09323DA43D97B3FAEB04F3C54FA0DD95CB264F3
+    device_scope: connected task also ran 1/1 on PowerCal_Native095_RawFixture_20261106/emulator-5590; unintended enumeration, no unchanged-state claim, no further commands there
+    evidence: .local/android-test/reports/native095-ai-bubbles-20261107/manifest.md; docs/issues/PC-ISSUE-SEPARATION-NATIVE-AI-BUBBLE-CHROME-20261107.md; docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md
+    limitation: AI menu visual layout, attachment/proposal/error/retry, composer and whole-page behavior remain open; dark mode was computed-style asserted, not screenshot-compared; Product Cutover HOLD
+BLOCKERS: Whole-surface Native-to-Web parity remains incomplete. Remaining Timeline states include dense/multilane, locked, empty and broader accessibility behavior. Month, Memo (including the Web-only load-more control), editor/Draft Deck geometry, AI message-action menu appearance, attachment/proposal/error/retry states and whole-page comparisons, and Settings routes remain open. AI history paging and the 6000-code-unit input boundary have narrow PASS evidence, but the entire AI page remains PARTIAL. Studio Python suite has three unrelated route/recovery source-shape failures; full browser E2E has a pre-Timeline palette assertion failure. Forced checkpoint-I/O failure, physical/OEM reminder delivery and live AI provider reliability remain NOT TESTED. Product Cutover remains HOLD.
 
 AUTHORITATIVE_PLAN: docs/POWERCAL_SINGLE_DEFAULT_SKIN_EXECUTION_PLAN_2026-11-03_R2.md
 ACCEPTANCE_MATRIX: docs/agent-handoff/SINGLE_SKIN_ACCEPTANCE.md
