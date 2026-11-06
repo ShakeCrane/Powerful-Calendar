@@ -8,24 +8,36 @@ OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: a767c2f20cbc360d8e178fc99e2bbc053b099c0e (Clear ordinary Native Tools route removed)
-LATEST_VERIFIED_HEAD: a767c2f20cbc360d8e178fc99e2bbc053b099c0e (serial Gradle gate PASS; 987 JVM tests, zero failures/errors/skips; API 35 route + recovery instrumentation 3/3; package verifier PASS)
+LATEST_CODE_HEAD: b6a9b91679c0f77d4e3415b6bdcee77d5663312e (Native profile Settings card narrow parity)
+LATEST_VERIFIED_HEAD: b6a9b91679c0f77d4e3415b6bdcee77d5663312e (serial Gradle PASS; 987/987 JVM; targeted API 35 WebView tests 2/2; Studio package tests 7/7 and E2E PASS; package verifier PASS)
 CURRENT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
 TASK_STATUS: IN_PROGRESS
 PRODUCT_CUTOVER: HOLD
 TASK_BASE_HEAD: e129d2defa4af5fe30c7729402cd5d04d35b3370
-WORKING_APK_SHA256: B41DCD08421B4BE91D40FC0B205945BCEB0D3884B0DD4F38C8D80B8C505F9A6C
-WORKING_DEFAULT_SKIN_SHA256: 88EA98745669139BD4C454B4E23C1555CD29450DE3469E906D11DF99124F8A50
+WORKING_APK_SHA256: B0AEEF6E19F8AA14AB5FBB2B4ED80C2DE0DED405C1519809A4827053EA09F0DF
+WORKING_DEFAULT_SKIN_SHA256: 4A057F27EA31343362B1EC7BD8F2E7B928E8C97A8520DE653B2A32196B3CD400
 WORKING_DEFAULT_SKIN_ID: powercal-clear-default
 NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; implementation and full parity remain IN PROGRESS)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
-LAST_COMPLETED_TASK: Close ordinary Native Tools route from default Web Settings (narrow PASS; Settings parity remains PARTIAL)
-LAST_COMPLETED_COMMIT: a767c2f20cbc360d8e178fc99e2bbc053b099c0e
-LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; Settings visual comparison still open)
-LAST_ATTEMPTED_COMMIT: a767c2f20cbc360d8e178fc99e2bbc053b099c0e (ordinary Web route closed; independent recovery retained)
-NEXT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
-NEXT_ACTION: Pair the frozen Native 0.9.5 Settings page with current WebView on an identity-verified isolated API 35 AVD. Capture section order, visible states, component geometry, focus/scroll and real taps; omit the Owner-retired skin catalogue and preserve formal Host actions plus independent Native recovery. Use this evidence to implement one bounded Settings parity slice.
+LAST_COMPLETED_TASK: Native 0.9.5 personal information Settings card parity (narrow PASS; entire Settings remains PARTIAL)
+LAST_COMPLETED_COMMIT: b6a9b91679c0f77d4e3415b6bdcee77d5663312e
+LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; no full page is signed off)
+LAST_ATTEMPTED_COMMIT: b6a9b91679c0f77d4e3415b6bdcee77d5663312e (latest verified narrow slice)
+NEXT_TASK: NATIVE_095_TIMELINE_PINCH_ZOOM_PARITY
+NEXT_ACTION: Compare frozen Native two-finger vertical Timeline zoom with the Web v3 pointer/touch path on the identity-verified API 35 AVDs. Trace the existing Camera Host action and bounds; implement the native gesture in Web only if the behavior gap is confirmed, then verify it with real WebView touch and unchanged Store. Do not infer whole Timeline parity.
 LATEST_SLICE_EVIDENCE:
+  NATIVE_095_SETTINGS_PROFILE_CARD:
+    status: NARROW PASS (profile card only; Settings remains PARTIAL)
+    source_baseline: b1f7629f0c52812e1887443872f43aa6c49908c4
+    code_commit: b6a9b91679c0f77d4e3415b6bdcee77d5663312e
+    raw_apk_sha256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
+    current_apk_sha256: B0AEEF6E19F8AA14AB5FBB2B4ED80C2DE0DED405C1519809A4827053EA09F0DF
+    default_skin_sha256: 4A057F27EA31343362B1EC7BD8F2E7B928E8C97A8520DE653B2A32196B3CD400 (one package; source/APK bytes identical)
+    android: PowerCal_Native095_MenuReference_20261107/emulator-5560 and PowerCal_Wave2_QA35_20261104/emulator-5556; API 35, 1080x2400, 420dpi; WebView 124.0.6367.219
+    tests: full serial Gradle PASS; 987 JVM, 0 failures/errors/skips; source boundaries, assemble, lint, AndroidTest compile/package PASS; two profile/Settings Android methods 2/2; Studio package tests 7/7 and Browser mock E2E PASS
+    geometry: Native card [42,299]-[1038,963]; Web input physical bounds derived from DOM `dpr=2.625`; screenshot input edge deltas about 1px horizontal/top and 3px bottom; raw/Web screenshot hashes are in evidence manifest
+    evidence: .local/android-test/reports/native095-settings-profile-20261107/manifest.md; docs/issues/PC-ISSUE-SEPARATION-NATIVE-SETTINGS-PROFILE-20261107.md; parity audit docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md
+    residuals: AI settings, reminder/permission/data cards and complete Settings states remain PARTIAL; Native full-screen parity remains IN_PROGRESS; Product Cutover HOLD
   NATIVE_095_AI_MESSAGE_MENU:
     status: NARROW PASS (user menu screenshot geometry/style; user and assistant DOM/menu assertions; full AI page remains PARTIAL)
     source_baseline: b1f7629f0c52812e1887443872f43aa6c49908c4

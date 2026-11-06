@@ -1,3 +1,12 @@
+## 2026-11-07 Native 0.9.5 个人资料 Settings 卡片对齐（窄范围 PASS）
+
+- **当前任务：**Native 0.9.5 视觉/交互迁移仍 `IN PROGRESS`；本次只签核 Settings 的个人资料卡，整页及其余日常页面仍 `PARTIAL`。Owner 冻结基线 `b1f7629f0c52812e1887443872f43aa6c49908c4`；产品 Cutover `HOLD`。
+- **实现提交：**`b6a9b91679c0f77d4e3415b6bdcee77d5663312e`，`fix(skin): 对齐原生个人资料设置卡片`。只更新默认 Clear Web 源、由正式构建工具重建的唯一 `.pcskin`、对应 Android/Studio 测试。Core、Host、数据库语义、Native 恢复和皮肤身份均未修改。
+- **原始 APK A/B：**原始 APK 与从 `PowerCal_Native095_MenuReference_20261107` / `emulator-5560` 拉回的安装 `base.apk` SHA 均为 `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`。同 `PowerCal_Wave2_QA35_20261104` / `emulator-5556` 比较，设备 API35、1080×2400、420dpi；WebView 124.0.6367.219。Native/Web 截图与层级几何记录见 `.local/android-test/reports/native095-settings-profile-20261107/manifest.md`。
+- **效果与数据：**Native/Web 个人资料标题、说明、输入及保存控制做了真实屏幕对照；输入框可见边缘最大约 3 physical px 差。字段点击只在显式打开 Host 编辑后显示名称，保存结果相同；Back 丢弃未保存输入并返回焦点。Core Store 快照未变。
+- **验证：**串行 Gradle 全门禁 `BUILD SUCCESSFUL`，142 suites/987 JVM，0 failure/error/skip；两个源码边界、APK、Lint、AndroidTest 编译/打包 PASS。两个 API35 WebView Android 用例各 1/1；Studio 分发 Python 2/2、Default Clear Python 5/5、Node syntax 和 Preview Mock E2E PASS。正式包验证仅一份 `powercal-clear-default.pcskin`，源码/APK SHA `4A057F27EA31343362B1EC7BD8F2E7B928E8C97A8520DE653B2A32196B3CD400`；APK SHA `B0AEEF6E19F8AA14AB5FBB2B4ED80C2DE0DED405C1519809A4827053EA09F0DF`。
+- **问题与后续：**首次设备测试断在 JSON 编码空串断言；修正后最终目标用例通过，不是产品故障。Issue `docs/issues/PC-ISSUE-SEPARATION-NATIVE-SETTINGS-PROFILE-20261107.md`。唯一下一动作是对照/移植冻结 Native Timeline 的双指垂直缩放；不代表 Settings 或 Native/Web 全产品完成。
+
 ## 2026-11-06 AI 历史投影差异真实 APK A/B 确认（修复待实施）
 
 - **基准与样本：**冻结源码 `b1f7629f0c52812e1887443872f43aa6c49908c4`，原始 APK SHA-256 `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`；当前 Web Debug APK SHA-256 `EF29297DF78D253E2A9C3ED03B24C81664CC23CD2A429874B8C7E348D3E3789B`。两个已核验 API 35 AVD 均 1080×2400、420 dpi；WebView 124.0.6367.219。相同的 42 条合成会话，最后一条 1945 字并含唯一尾标，fixture SHA-256 `272CB979F92023335C55BFF29BD453EC425BF4EA11832CC827147541842F4CE1`。
