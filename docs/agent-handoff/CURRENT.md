@@ -23,7 +23,7 @@ LAST_COMPLETED_COMMIT: 75a3510c5affa18c08dbb0d23482496d0240453d
 LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; see audit and latest Android evidence)
 LAST_ATTEMPTED_COMMIT: 75a3510c5affa18c08dbb0d23482496d0240453d (raw APK/Web ALARM point-title alignment; parity task remains IN_PROGRESS)
 NEXT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
-NEXT_ACTION: Continue the finite Native 0.9.5 page/component difference audit using same-configuration, same-fixture original-APK and Web v3 evidence. ALARM point-title typography/color is closed narrowly; compare the remaining point kinds, activity cards and per-page component gaps. Keep page-wide status PARTIAL until every required state has evidence; Product Cutover remains HOLD.
+NEXT_ACTION: Implement Native-equivalent Memo row metadata (kind, local date, repeat marker, sequence) from the existing MemoEntryV1 fields, then validate the same non-empty fixture with original APK and current WebView touch/screenshots. The cross-page audit is recorded in NATIVE_095_VISUAL_PARITY_AUDIT.md; next audit Month agenda swipe scope, then editor/deck and AI states. Keep page-wide status PARTIAL and Product Cutover HOLD.
 LAST_TASK_EVIDENCE:
   NATIVE_095_ALARM_POINT_TITLE:
     status: PASS (ALARM title typography, type color and title-box geometry only; Timeline remains PARTIAL)

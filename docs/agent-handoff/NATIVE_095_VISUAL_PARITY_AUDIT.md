@@ -569,3 +569,25 @@ Raw/Web fixture Store 均为 drafts=0, commits=8, identities=8，无夹具外写
 - 代码提交 `75a3510c5affa18c08dbb0d23482496d0240453d`。Debug APK SHA-256 `AA7D061C7EE412BBF368E33B237869539E076992FEE7A8D3A7E79E3CAB79CD5D`；唯一默认包 SHA-256 `95526F9DF0C1524790E48EFF3ECDCA6F6848C078BBD34825D2FC2463D0E9D58E`，10 files / 410943 bytes，源码和 APK 字节一致。
 - 证据目录 `.local/android-test/reports/native095-alarm-point-title-20261106/`；独立 Issue `docs/issues/PC-ISSUE-SEPARATION-NATIVE-TIMELINE-POINT-TITLE-20261106.md`。
 - 仅 ALARM 标题直接实测；DEADLINE 调整尚未单独设备验证。ACTIVITY 卡片、其他状态、深色/大字体、复发事件及完整 Timeline 仍未签核。Native 恢复不变，Product Cutover HOLD。
+
+## 2026-11-06 跨页面有限源码差异审计（设备状态未重测）
+
+范围为冻结 Native 源码 `b1f7629f0c52812e1887443872f43aa6c49908c4` 与代码提交 `75a3510c5affa18c08dbb0d23482496d0240453d` 的时间轴、月历、Memo、AI、Settings、编辑/草稿与导航表面。Native 文件路径按冻结提交记录；分离后的 `native-skin/` 路径只用于当前恢复实现。此处为定向源码核对，不新增设备 PASS；表中的既有测试均是其报告基线上的 PREVIOUS PASS。
+
+| 页面/组件 | 已有等价或正式路径 | 需要移植或实测的差异 | 当前证据边界 |
+|---|---|---|---|
+| Timeline | 当前已有同夹具双翼、真实时间几何、框外标题/折叠和 ALARM 标题窄切片；交互走 Web Host。 | DEADLINE 标题位置、ACTIVITY 卡片/样式、所有类型在深色/大字体/重复实例与完整 Camera 状态。 | ALARM 标题和前述双翼用原始 APK 与 Web v3 实际对照；Timeline 整页仍 PARTIAL。 |
+| Month | 七列 4–6 行日期格、选择/月切换、Agenda、重复实例打开走 Core/Host；弹窗、日格及部分 Agenda 有独立实屏切片。 | 冻结 `MonthScreen.kt::NativeMonthScreen` 将 >72dp 横向切月手势放在整个 `LazyColumn`；Web `app.js` 只从 `#monthGrid` 开始监听。Web 重复项投影设 owner/item 上限，Native 冻结路径给 `displayOccurrences` 完整记录，截断边界需核对。 | 现有网格滑动及 F-03 实例证据是 PREVIOUS PASS；Agenda/标题区域横滑与上限边界未做当前成对设备验证。Month 整页 PARTIAL。 |
+| Memo | `MemoFeatureApiV1` 已给出 `kind`、`startMillis`、`zoneId`、`repeating`、eventSeq/revision；完成/撤销和打开走正式 API。 | 冻结 `MemoCenterScreen.kt::NativeMemoCenterScreen` 每行显示标题、类型、本地日期、重复标记、序号；当前 `WebSkinMemoProjection.build()` 未投影 kind/zoneId，`renderMemo()` 只输出完成控件和标题。Web 有 250 项续页按钮，Native 冻结 `LazyColumn` 不显示续页控件。 | 空态、筛选和 Web 分页有历史实测；非空 Native/Web 行元数据、超 250 项可达性及同实例完成/编辑未配对。可用现有 Memo DTO，不需新增业务规则或 Core API。 |
+| AI | 聊天、提案、附件通过正式 Host/Core 路由；Web 消息动作已有局部真实触摸证据。 | Native 输入上限 6000，Web 输入控件/Host 上限 4000；Web 历史窗口限制 40 条且单条内容最多 1600 字符，Native 冻结页面使用完整历史。提案审核滚动区、溢出菜单形态与配置返回路径不同。 | F-07 的 Stub/审批通过是历史功能证据；真实服务商 NOT TESTED。原始 APK 与 Web 菜单/长历史/提案滚动状态未同夹具比较，AI 整页 PARTIAL。 |
+| Settings / 系统操作 | 权限、SAF、提醒、ICS、备份及受保护凭据由 Host/Android 完成，Web 发正式动作。 | 卡片分组/顺序/状态反馈仍需同状态逐项对照；冻结 Native 中的皮肤候选、导入/导出/删除目录 UI 已被 Owner 退役，不属于待移植表面。 | F-08 系统动作是此前 API 35 PREVIOUS PASS，不等于当前全状态视觉对照。Native 恢复及可信系统能力保留。 |
+| 编辑器 / Deck / 审核 | 四类编辑、草稿、冲突、重复作用域和可信写入已接入正式 Core/Host API；审批仍由 Host 承担。 | Native 是暗 scrim 上的 Compose 编辑面、底部动作和叠卡；Web 是高面积浅色面板、显式前后卡按钮；日期型/时刻型 Deadline 输入入口也不同。 | F-05/F-06 功能测试是 PREVIOUS PASS；两端新建、编辑、冲突、删除确认、脏离开状态尚无同状态逐项几何签核。 |
+| 导航 / 恢复 / 无障碍 | 可见主导航为 Timeline、Month、AI、Settings；Memo 从日常入口打开；Native 独立恢复与 Host 可信表面继续保留。 | Web 有隐藏兼容 Memo 路由；Back/IME/草稿检查点需用当前构建重放；TalkBack 焦点遍历未验证。 | F-09 Back/renderer 结果是 PREVIOUS PASS；不能替代本轮冻结 APK/Web 配对，也不能把 TalkBack 写成通过。 |
+
+### 有限审计结论与实施顺序
+
+1. 第一优先修复 Memo 行展示缺失：仅投影并展示既有 Memo DTO 的类型、本地日期、重复标记和序号；Host 继续提供 zone 与身份字段，Store/API 语义不变。随后用原始 APK 与当前 WebView 的同一非空夹具、真实触摸验证。
+2. 再处理 Month 非网格区域的切月手势范围，保留 72dp 阈值、纵向滚动与拖动后不误点；用 Agenda 触控夹具比较两端。
+3. 之后按同状态证据推进编辑器/Deck/确认表面及 AI 状态边界；Settings 仅对齐保留功能，绝不复刻已退役的皮肤目录。
+
+此审计不改变 Core/Host 业务语义、唯一默认包身份、Native 安全恢复、SSA 状态或 Product Cutover HOLD。静态字段差异可指导移植，但所有外观与交互结论仍需针对冻结原始 APK和新版 WebView 的实际截图/触控逐项签核。
