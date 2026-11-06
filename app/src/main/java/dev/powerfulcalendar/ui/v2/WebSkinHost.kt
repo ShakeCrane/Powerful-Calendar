@@ -44,6 +44,7 @@ import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import android.webkit.WebMessagePort
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.abs
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -185,6 +186,8 @@ internal sealed interface WebSkinAction {
     data class PanTimeline(val deltaMinutes: Int) : WebSkinAction
     /** Change only the vertical time scale; the camera's center instant is retained. */
     data class ZoomTimeline(val direction: TimelineZoomDirection) : WebSkinAction
+    /** Apply an exact presentation camera produced by a continuous viewport gesture. */
+    data class SetTimelineCamera(val anchorMillis: Long, val hours: Double) : WebSkinAction
     /** Restore a 24-hour viewport while retaining the current camera center. */
     data object ResetTimelineZoom : WebSkinAction
     /** Select a calendar day while preserving the existing time span. */
@@ -720,6 +723,18 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
                 "out" -> WebSkinAction.ZoomTimeline(TimelineZoomDirection.OUT)
                 else -> null
             }
+        }
+        "setTimelineCamera" -> {
+            if (keys != setOf("name", "anchorMillis", "hours")) return null
+            val rawAnchor = payload.opt("anchorMillis") as? Number ?: return null
+            val rawHours = payload.opt("hours") as? Number ?: return null
+            val anchorNumber = rawAnchor.toDouble()
+            val nextHours = rawHours.toDouble()
+            if (!anchorNumber.isFinite() || abs(anchorNumber) > 9_007_199_254_740_991.0 ||
+                anchorNumber % 1.0 != 0.0 || !nextHours.isFinite() || nextHours !in 0.25..48.0) {
+                return null
+            }
+            WebSkinAction.SetTimelineCamera(anchorNumber.toLong(), nextHours)
         }
         "resetTimelineZoom" ->
             if (keys == setOf("name")) WebSkinAction.ResetTimelineZoom else null

@@ -106,6 +106,14 @@ class HostBindingCatalogTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unknown parameter"):
             validate_action_parameters("openAiSettings", {"apiKey": "secret"})
         validate_action_parameters("panTimeline", {"deltaMinutes": 30})
+        validate_action_parameters("setTimelineCamera", {
+            "anchorMillis": 1_798_765_200_000, "hours": 18.25})
+        with self.assertRaisesRegex(ValueError, "maximum"):
+            validate_action_parameters("setTimelineCamera", {
+                "anchorMillis": 1_798_765_200_000, "hours": 49})
+        with self.assertRaisesRegex(ValueError, "unknown parameter"):
+            validate_action_parameters("setTimelineCamera", {
+                "anchorMillis": 1_798_765_200_000, "hours": 18.25, "eventSeq": 7})
         validate_action_parameters("clearAiTemporaryCache", {})
         with self.assertRaisesRegex(ValueError, "unknown Host action"):
             validate_action_parameters("inventedBusinessAction", {})
@@ -191,7 +199,8 @@ class HostBindingCatalogTest(unittest.TestCase):
 
     def test_retired_skin_catalog_actions_are_not_exposed_as_host_actions(self):
         names = set(self.actions)
-        self.assertTrue({"selectSkin", "importSkin", "deleteSkin", "exportInstalledSkin"}.isdisjoint(names))
+        self.assertTrue({"selectSkin", "importSkin", "deleteSkin", "exportInstalledSkin",
+                         "nativeSettings"}.isdisjoint(names))
 
 
 if __name__ == "__main__":

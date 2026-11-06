@@ -538,34 +538,6 @@
       }
     },
     {
-      "name": "nativeSettings",
-      "label": "Open Host settings/recovery",
-      "parameters": {},
-      "source": "WebSkinHost.decodeBridgeAction → PowerCalApp Routed",
-      "version": 1,
-      "requiredCapability": "host.action",
-      "parameterSchema": {
-        "type": "object",
-        "properties": {},
-        "required": [],
-        "additionalProperties": false
-      },
-      "resultSchema": "#/actionResult",
-      "errors": "#/actionResult/errors",
-      "wirePayloadSchema": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "const": "nativeSettings"
-          }
-        },
-        "required": [
-          "name"
-        ],
-        "additionalProperties": false
-      }
-    },
-    {
       "name": "openDeck",
       "label": "Open draft deck",
       "parameters": {},
@@ -985,6 +957,72 @@
         "required": [
           "name",
           "direction"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "setTimelineCamera",
+      "label": "Apply timeline camera",
+      "parameters": {
+        "anchorMillis": {
+          "type": "integer",
+          "minimum": -2209075200000,
+          "maximum": 7289740800000
+        },
+        "hours": {
+          "type": "number",
+          "minimum": 0.25,
+          "maximum": 48
+        }
+      },
+      "availability": "TIMELINE",
+      "effect": "Applies the exact presentation camera for a continuous viewport gesture; no calendar write.",
+      "version": 1,
+      "requiredCapability": "host.action",
+      "parameterSchema": {
+        "type": "object",
+        "properties": {
+          "anchorMillis": {
+            "type": "integer",
+            "minimum": -2209075200000,
+            "maximum": 7289740800000
+          },
+          "hours": {
+            "type": "number",
+            "minimum": 0.25,
+            "maximum": 48
+          }
+        },
+        "required": [
+          "anchorMillis",
+          "hours"
+        ],
+        "additionalProperties": false
+      },
+      "resultSchema": "#/actionResult",
+      "errors": "#/actionResult/errors",
+      "wirePayloadSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "const": "setTimelineCamera"
+          },
+          "anchorMillis": {
+            "type": "integer",
+            "minimum": -2209075200000,
+            "maximum": 7289740800000
+          },
+          "hours": {
+            "type": "number",
+            "minimum": 0.25,
+            "maximum": 48
+          }
+        },
+        "required": [
+          "name",
+          "anchorMillis",
+          "hours"
         ],
         "additionalProperties": false
       }

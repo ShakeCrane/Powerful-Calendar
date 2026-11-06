@@ -10,7 +10,8 @@ let port=null, bridgeReady=false, state={}, currentPage="TIMELINE", memoFilter="
 const bridgeOutbox=[];
 const MAX_PENDING_BRIDGE_MESSAGES=64;
 let timelineScrollInitialized=false;
-let timelineDrag=null,timelineCameraPan=null,suppressTimelineClickUntil=0;
+let timelineDrag=null,timelineCameraPan=null,timelineCameraPinch=null,suppressTimelineClickUntil=0;
+const timelineCameraPointers=new Map();
 let titleFoldFrame=0,titleFoldResizeObserver=null;
 let aiReviewSelectionId="",aiReviewSelected=new Set();
 let attachmentRequestPending=false;
@@ -464,6 +465,83 @@ function canStartTimelineCameraPan(target){
     "[data-action],[data-local],.tEvent,[role='button'],dialog");
 }
 const TIMELINE_CAMERA_TOUCH_SLOP_CSS_PX=8;
+function timelineCameraPoint(axis,event){
+  const rect=axis.getBoundingClientRect();
+  return {x:event.clientX-rect.left,y:event.clientY-rect.top};
+}
+function timelinePinchZoomFactor(oldDx,oldDy,newDx,newDy){
+  const slop=typeof monthSwipePlatformSlopCssPx==="function"
+    ?monthSwipePlatformSlopCssPx():TIMELINE_CAMERA_TOUCH_SLOP_CSS_PX;
+  if(![oldDx,oldDy,newDx,newDy].every(Number.isFinite)||Math.hypot(oldDx,oldDy)<slop*2)return 1;
+  const viewportScale=Number(window.visualViewport?.scale)||1;
+  const density=Number(window.devicePixelRatio)||1;
+  const softness=42/(density*viewportScale);
+  const before=Math.sqrt(oldDy*oldDy+softness*softness);
+  const after=Math.sqrt(newDy*newDy+softness*softness);
+  return Math.exp(Math.max(-3,Math.min(3,Math.log(after/before)*0.32)));
+}
+function dampTimelinePinchCentroid(deltaY){
+  const viewportScale=Number(window.visualViewport?.scale)||1;
+  const density=Number(window.devicePixelRatio)||1;
+  const softness=28/(density*viewportScale);
+  return deltaY*Math.abs(deltaY)/(Math.abs(deltaY)+softness);
+}
+function timelineTimeAt(y,anchorMillis,height,hours){
+  if(height<=0)return anchorMillis;
+  return anchorMillis+Math.round((y-height/2)/height*hours*3_600_000);
+}
+function timelineCameraAnchorSupported(anchorMillis,zoneId=state.timeline?.zoneId){
+  if(!Number.isSafeInteger(anchorMillis))return false;
+  try{
+    const zone=zoneId||"Asia/Shanghai";
+    const year=Number(new Intl.DateTimeFormat("en-US",{timeZone:zone,year:"numeric"})
+      .formatToParts(new Date(anchorMillis)).find(part=>part.type==="year")?.value);
+    return Number.isInteger(year)&&year>=1900&&year<=2200;
+  }catch{return false}
+}
+function timelinePointerCentroidY(){
+  const pointers=[...timelineCameraPointers.values()];
+  return pointers.length?pointers.reduce((sum,point)=>sum+point.y,0)/pointers.length:0;
+}
+function beginTimelineCameraPinch(axis){
+  if(timelineCameraPointers.size<2)return false;
+  const previousCamera=timelineCameraPinch?.lastCamera||timelineCameraPan?.lastCamera;
+  const points=[...timelineCameraPointers.entries()].slice(0,2);
+  const first=points[0][1],second=points[1][1];
+  const anchorMillis=Number(previousCamera?.anchorMillis??state.timeline?.anchorMillis);
+  const hours=Number(previousCamera?.hours??state.timeline?.hours);
+  const height=axis.clientHeight;
+  if(!Number.isSafeInteger(anchorMillis)||!Number.isFinite(hours)||hours<=0||height<=0)return false;
+  timelineCameraPinch={axis,pointerIds:points.map(([id])=>id),oldDx:first.x-second.x,
+    oldDy:first.y-second.y,startY:timelinePointerCentroidY(),height,anchorMillis,hours,
+    lastCamera:{anchorMillis,hours}};
+  timelineCameraPan=null;
+  cancelTimelineDrag();
+  suppressTimelineClickUntil=Date.now()+900;
+  for(const id of timelineCameraPointers.keys()){try{axis.setPointerCapture(id)}catch{}}
+  return true;
+}
+function updateTimelineCameraPinch(){
+  const gesture=timelineCameraPinch;
+  if(!gesture)return;
+  const first=timelineCameraPointers.get(gesture.pointerIds[0]);
+  const second=timelineCameraPointers.get(gesture.pointerIds[1]);
+  if(!first||!second)return;
+  const zoom=timelinePinchZoomFactor(gesture.oldDx,gesture.oldDy,
+    first.x-second.x,first.y-second.y);
+  const nextHours=Math.max(0.25,Math.min(48,gesture.hours/Math.max(0.01,zoom)));
+  const centroid=timelinePointerCentroidY();
+  const nextFocusY=gesture.startY+dampTimelinePinchCentroid(centroid-gesture.startY);
+  const focus=timelineTimeAt(gesture.startY,gesture.anchorMillis,gesture.height,gesture.hours);
+  const offset=timelineTimeAt(nextFocusY,0,gesture.height,nextHours);
+  const nextAnchor=focus-offset;
+  if(!timelineCameraAnchorSupported(nextAnchor)||
+      (nextAnchor===gesture.lastCamera.anchorMillis&&nextHours===gesture.lastCamera.hours))return;
+  if(send("setTimelineCamera",{anchorMillis:nextAnchor,hours:nextHours})){
+    gesture.lastCamera={anchorMillis:nextAnchor,hours:nextHours};
+    suppressTimelineClickUntil=Date.now()+900;
+  }
+}
 function updateTimelineCameraPan(event){
   const gesture=timelineCameraPan;
   if(!gesture||gesture.pointerId!==event.pointerId)return;
@@ -487,28 +565,84 @@ function updateTimelineCameraPan(event){
   let remaining=desiredMinutes-gesture.sentMinutes;
   while(remaining!==0){
     const deltaMinutes=Math.max(-2880,Math.min(2880,remaining));
+    const nextAnchor=gesture.anchorMillis+(gesture.sentMinutes+deltaMinutes)*60_000;
+    if(!timelineCameraAnchorSupported(nextAnchor))break;
     if(!send("panTimeline",{deltaMinutes}))break;
     gesture.sentMinutes+=deltaMinutes;
+    gesture.lastCamera={anchorMillis:gesture.anchorMillis+gesture.sentMinutes*60_000,
+      hours:gesture.hours};
     remaining=desiredMinutes-gesture.sentMinutes;
   }
 }
+function continueTimelineCameraPanAfterPinch(gesture){
+  const [pointerId,point]=timelineCameraPointers.entries().next().value||[];
+  if(pointerId===undefined)return false;
+  const axis=gesture.axis,rect=axis.getBoundingClientRect();
+  timelineCameraPan={axis,pointerId,startX:rect.left+point.x,startY:rect.top+point.y,
+    anchorMillis:gesture.lastCamera.anchorMillis,hours:gesture.lastCamera.hours,
+    height:axis.clientHeight,lastDy:0,verticalTravel:0,appliedDy:0,sentMinutes:0,
+    lastCamera:{...gesture.lastCamera},active:true};
+  return true;
+}
+function finishTimelineCameraPinchPointerChange(axis){
+  const gesture=timelineCameraPinch;
+  if(!gesture)return false;
+  if(timelineCameraPointers.size>=2)beginTimelineCameraPinch(axis||gesture.axis);
+  else{
+    timelineCameraPinch=null;
+    timelineCameraPan=null;
+    if(timelineCameraPointers.size===1)continueTimelineCameraPanAfterPinch(gesture);
+  }
+  suppressTimelineClickUntil=Date.now()+900;
+  return true;
+}
 $("axisScroll")?.addEventListener("pointerdown",event=>{
-  if((event.pointerType!=="touch"&&event.pointerType!=="")||!event.isTrusted||!event.isPrimary||event.button!==0||
-      currentPage!=="TIMELINE"||localOptions||timelineCameraPan||!canStartTimelineCameraPan(event.target))return;
-  const axis=$("axisScroll"),hours=Number(state.timeline?.hours),height=axis?.clientHeight||0;
-  if(!axis||!Number.isFinite(hours)||hours<=0||height<=0)return;
+  if((event.pointerType!=="touch"&&event.pointerType!=="")||!event.isTrusted||event.button!==0||
+      currentPage!=="TIMELINE"||localOptions)return;
+  const axis=$("axisScroll");
+  if(!axis)return;
+  timelineCameraPointers.set(event.pointerId,timelineCameraPoint(axis,event));
+  if(timelineCameraPointers.size>=2){
+    if(beginTimelineCameraPinch(axis)&&event.cancelable)event.preventDefault();
+    return;
+  }
+  if(!event.isPrimary||timelineCameraPan||!canStartTimelineCameraPan(event.target))return;
+  const hours=Number(state.timeline?.hours),height=axis.clientHeight;
+  if(!Number.isFinite(hours)||hours<=0||height<=0)return;
   timelineCameraPan={axis,pointerId:event.pointerId,startX:event.clientX,startY:event.clientY,
-    hours,height,lastDy:0,verticalTravel:0,appliedDy:0,sentMinutes:0,active:false};
+    anchorMillis:Number(state.timeline?.anchorMillis),hours,height,lastDy:0,verticalTravel:0,
+    appliedDy:0,sentMinutes:0,lastCamera:{anchorMillis:Number(state.timeline?.anchorMillis),hours},active:false};
 });
 document.addEventListener("pointermove",event=>{
-  updateTimelineCameraPan(event);
+  if(timelineCameraPointers.has(event.pointerId)){
+    const axis=timelineCameraPinch?.axis||$("axisScroll");
+    if(axis)timelineCameraPointers.set(event.pointerId,timelineCameraPoint(axis,event));
+  }
+  if(timelineCameraPinch){
+    updateTimelineCameraPinch();
+    if(event.cancelable)event.preventDefault();
+  }else updateTimelineCameraPan(event);
 },{passive:false});
 document.addEventListener("pointerup",event=>{
+  const wasTracked=timelineCameraPointers.has(event.pointerId);
+  if(wasTracked){
+    const axis=timelineCameraPinch?.axis||$("axisScroll");
+    if(axis)timelineCameraPointers.set(event.pointerId,timelineCameraPoint(axis,event));
+  }
+  if(timelineCameraPinch&&wasTracked){
+    timelineCameraPointers.delete(event.pointerId);
+    finishTimelineCameraPinchPointerChange(timelineCameraPinch?.axis);
+    if(event.cancelable)event.preventDefault();
+    return;
+  }
   updateTimelineCameraPan(event);
+  timelineCameraPointers.delete(event.pointerId);
   if(timelineCameraPan?.pointerId===event.pointerId)timelineCameraPan=null;
 });
 document.addEventListener("pointercancel",event=>{
-  if(timelineCameraPan?.pointerId===event.pointerId)timelineCameraPan=null;
+  if(!timelineCameraPointers.has(event.pointerId)&&timelineCameraPan?.pointerId!==event.pointerId)return;
+  timelineCameraPointers.clear();timelineCameraPinch=null;timelineCameraPan=null;
+  suppressTimelineClickUntil=Date.now()+900;
 });
 document.addEventListener("click",e=>{
   if(!e.target.closest(".chat-message-action-container"))closeChatMessageMenus();
@@ -526,6 +660,13 @@ const axisResetHit=$("axisResetHit");
 let lastAxisResetTap=null,lastAxisResetSentAt=0;
 axisResetHit?.addEventListener("pointerup",event=>{
   if(event.pointerType!=="touch"&&event.pointerType!=="pen")return;
+  if(timelineCameraPointers.has(event.pointerId)){
+    const axis=timelineCameraPinch?.axis||$("axisScroll");
+    if(axis)timelineCameraPointers.set(event.pointerId,timelineCameraPoint(axis,event));
+    timelineCameraPointers.delete(event.pointerId);
+    if(timelineCameraPinch)finishTimelineCameraPinchPointerChange(axis);
+    else if(timelineCameraPan?.pointerId===event.pointerId)timelineCameraPan=null;
+  }
   const now=performance.now(),point={x:event.clientX,y:event.clientY};
   if(lastAxisResetTap&&now-lastAxisResetTap.at<=420&&
       Math.hypot(point.x-lastAxisResetTap.x,point.y-lastAxisResetTap.y)<=28){
@@ -938,7 +1079,8 @@ function renderTimeline(){
   dates.style.removeProperty("--date-deadline-empty-font-size");
   dates.style.removeProperty("--date-deadline-empty-line-height");
   if(!t){$("timeRangeLabel").textContent="尚无宿主数据";$("timelineEmpty").hidden=false;return}
-  $("timeRangeLabel").textContent=t.hours+" 小时 / 屏";
+  const hours=Number(t.hours);
+  $("timeRangeLabel").textContent=(Number.isInteger(hours)?String(hours):hours.toFixed(1))+" 小时 / 屏";
   const from=Number(t.visibleStartMillis),to=Number(t.visibleEndMillis),span=Math.max(1,to-from);
   const zone=t.zoneId,axis=$("timelineSurface");
   if(!Number.isFinite(from)||!Number.isFinite(to)||to<=from)return;

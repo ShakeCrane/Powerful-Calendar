@@ -815,3 +815,18 @@ The AI page remains `PARTIAL`: menu visual layout, attachments, proposal/error/r
 - 真实 WebView 仪器测试触碰输入、由 Host 返回名称、保存、修改后按 Android Back；名称只在编辑打开时投影，Back 丢弃未保存值并恢复焦点。Native/Web 保存结果相同，Calendar Store 的事件/草稿/提交/身份/序号快照不变。另一个 Settings 回归确认皮肤目录不再显示且保护性系统操作仍存在。两用例各 1/1 PASS。
 - 串行 Gradle 门禁 PASS：142 suites、987 JVM tests、0 failures/errors/skips；两个源码边界、Debug APK、Lint、AndroidTest 编译/打包通过。Skin Studio 分发测试 2/2、Default Clear 测试 5/5、相关 Node 语法检查和 Studio Mock Browser E2E PASS。首次仪器运行因测试错误比较 JSON 编码后的空字符串失败；修正断言后最终用例通过，非产品故障。
 - 证据与日志：`.local/android-test/reports/native095-settings-profile-20261107/manifest.md`。未清除 AVD/app 数据；仅在隔离 QA App 上重置通知权限提示标志以重跑 Settings 用例。没有操作用户日历数据。个人资料卡切片 `PASS`，其他 Settings 子页和整页继续 `PARTIAL/NOT TESTED`；全局视觉迁移 `IN_PROGRESS`，Product Cutover `HOLD`。
+
+## 2026-11-07 Native 0.9.5 时间轴双指垂直缩放（窄切片 PASS）
+
+本项只覆盖空时间轴上的双指垂直缩放、时间尺双击复位、复位后再次缩放，以及“小时/屏”标签显示。Timeline 整页与所有视觉 parity 仍为 `PARTIAL`，不能据此签核页面等价。
+
+- 冻结行为取自 `b1f7629f0c52812e1887443872f43aa6c49908c4` 的 `app/src/main/java/dev/powerfulcalendar/ui/v2/TimelineScreen.kt` 和 `AxisPinch.kt`。Compose 手势使用原始间距、纵向缩放增益 `0.32`、42 px 正则化、28 px 质心阻尼；Timeline 只应用 `AxisPinch.decompose(...).y`，时间尺双击将视窗恢复到 24 小时。
+- 原 Web v3 只有按钮式 `zoomTimeline` 和单指纵向 pan，没有连续双指垂直缩放。现由 `app.js` 计算视窗相机、Host action `setTimelineCamera` 通过 `WebSkinHost.decodeBridgeAction` 做闭合参数校验，并由 `PowerCalApp` 仅更新展示 Camera；没有新增 Core/Store API，也没有改事件、提醒或数据库语义。Studio 正式动作目录与 Preview Mock 使用同一动作名和参数范围。
+- 手势完成后 Web 的内部相机值约为 `18.004479` 小时/屏；冻结 Native 同一触控序列显示 `18.0`。Skin 标签现按 Native 规则显示整数或一位小数；设备截图两侧均显示 `18.0 小时 / 屏`。API 35 instrumentation 在两侧以共同期望值 `18.0 ± 0.1` 断言，双击时间尺恢复 24，再进行一次 pinch 仍成功。
+- 复核另发现 Host 对相机锚点限制在其本地时区年份 1900–2200。Web 原先仅以“桥消息已发送”推进本地相机缓存，Host 拒绝边界锚点时可能让后续手势从未应用的缓存继续计算。现在 Skin 和 Studio Mock 依 `timeline.zoneId` 在发送前检查本地年份；E2E 在 `America/Los_Angeles` 下拒绝落入本地 1899 的 schema 下界，且 Mock 相机状态保持不变。实际 Android 的 1900/2200 边界操作尚未在设备上演示，标记 `NOT TESTED`。
+- API 35 配对设备：冻结原始 APK AVD `PowerCal_Native095_MenuReference_20261107` / `emulator-5560`，1080×2400、420 dpi。Web QA AVD `PowerCal_Wave2_QA35_20261104` / `emulator-5556`，同为 1080×2400、420 dpi、System WebView `124.0.6367.219`。原始 AVD 安装 `base.apk` 测前/测后 SHA-256 均为 `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`；只向该设备安装 AndroidTest APK。Web QA 仅以 `adb install -r` 更新 Debug APK，未清除应用数据。
+- 最终 Native/Web 屏幕图：`.local/android-test/reports/native095-timeline-pinch-20261107/native-compare-final.png` SHA-256 `9D8DE28FE855E2449D0F5D7460E4CE3958D3FFB4D4D5BCF028D349443418E251`；`web-label-final.png` SHA-256 `23A0717910EAF1DF3EE6912883FB8D7E28701C6B85E2DD9F00517AA2000DE419`。两图来自分开的隔离 AVD，同分辨率与密度；证据限于空轴触控和缩放标签，不是同一系统栏/时刻下的逐像素页面比较。
+- 全串行 Gradle 门禁 `987/987` JVM、0 failures/errors/skips；两项 Source Boundary、`assembleDebug`、Lint 和 AndroidTest Kotlin 编译均 PASS。最终标签变更后又运行 `:app:assembleDebug` 并在 QA WebView 重跑 instrumentation 1/1。Studio Python 90/90、Catalog 定向 9/9、Node 语法及 Studio Mock 浏览器 E2E PASS。E2E 也确认旧 `nativeSettings` 不在正式动作目录中且会被拒绝。正式 builder 校验唯一包 `powercal-clear-default.pcskin` 为 10 项、415117 bytes，源包与 APK 资产 SHA-256 相同：`78C13F92BB2878A559CCD57FE64FEA7F22D2137460620139C69155C7CBF5BB7E`；最终 Debug APK SHA-256 `CF310827CA4C3A7989DB79A5D35F6F2755F2AD01E7601D28B40CA271C74492CB`。
+- 完整复跑日志、失败重试和截图留存在 `.local/android-test/reports/native095-timeline-pinch-20261107/manifest.md`。测试只点导航/空时间尺并执行 pinch、双击复位、再 pinch；未触发事件、草稿、提醒或 AI Host action，未清空 AVD/app 数据。未直接读取或哈希 Calendar DB；“无 Store 写入”依据测试操作和 `SetTimelineCamera` 展示层调用路径，不能当作 DB 快照对比。
+
+范围外差异仍开放：事件点位、双翼尺寸、标签/刻度的实测矩形、密集事件和标题折叠与本切片未配对；手指取消、三指重基线、pinch 后单指拖动没有本轮设备用例；系统栏、底栏及整页结构仍有可见差异。Timeline 与其他页面继续 `PARTIAL`，Native 独立恢复保持，Product Cutover 仍 `HOLD`。

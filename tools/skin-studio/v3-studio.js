@@ -2069,6 +2069,15 @@ function onSkinCommand(p){
   catch(e){logAction("编辑回执失败 "+e.message)}
   postState();
 }
+function timelineCameraAnchorSupported(anchorMillis,zoneId){
+  if(!Number.isSafeInteger(anchorMillis))return false;
+  try{
+    const zone=zoneId||"Asia/Shanghai";
+    const year=Number(new Intl.DateTimeFormat("en-US",{timeZone:zone,year:"numeric"})
+      .formatToParts(new Date(anchorMillis)).find(part=>part.type==="year")?.value);
+    return Number.isInteger(year)&&year>=1900&&year<=2200;
+  }catch{return false}
+}
 function onSkinAction(message){
   try{
     if(typeof message!=="string"||message.length>8192)return;
@@ -2117,6 +2126,18 @@ function onSkinAction(message){
       }
       const factor=p.direction==="in"?1/1.5:1.5;
       mockHours=Math.max(0.25,Math.min(48,mockHours*factor));
+    }
+    if(name==="setTimelineCamera"){
+      if(Object.keys(p).sort().join(",")!=="anchorMillis,hours,name"||
+        !Number.isSafeInteger(p.anchorMillis)||p.anchorMillis < -2209075200000||
+        p.anchorMillis > 7289740800000||
+        !timelineCameraAnchorSupported(p.anchorMillis,lastState?.timeline?.zoneId)||!Number.isFinite(p.hours)||
+        p.hours<0.25||p.hours>48||mockPage!=="TIMELINE"){
+        logAction("拒绝无效 setTimelineCamera payload 或非时间轴请求");return;
+      }
+      mockAnchor=p.anchorMillis;mockHours=p.hours;
+      const state=lastState||simulatedState();
+      state.timeline.anchorMillis=mockAnchor;state.timeline.hours=mockHours;
     }
     if(name==="resetTimelineZoom"){
       if(Object.keys(p).join(",")!=="name"||mockPage!=="TIMELINE"){
@@ -2282,14 +2303,6 @@ function onSkinAction(message){
       }
       mockProfileEditor=null;postState();
       logAction("Studio Mock 打开 Host 保护的 AI 配置表单；此页面不启动 Android Host，不读取密钥或保存偏好");
-      return;
-    }
-    if(name==="nativeSettings"){
-      if(Object.keys(p).sort().join(",")!=="name"){
-        logAction("拒绝无效 nativeSettings payload");return;
-      }
-      mockProfileEditor=null;postState();
-      logAction("Studio Mock 收到原生设置/恢复路由；此页面不启动 Android Host");
       return;
     }
     if(name==="month"){
@@ -2528,10 +2541,11 @@ function onSkinAction(message){
     }
     logAction("模拟宿主收到："+name+
       (name==="zoomTimeline"?" · "+p.direction+" · "+mockHours+" 小时":"")+
+      (name==="setTimelineCamera"?" · "+mockHours+" 小时":"")+
       (name==="resetTimelineZoom"?" · "+mockHours+" 小时":"")+
       (p.id?" · "+p.id:"")+
       (name==="openEvent"?" · "+p.eventSeq:""));
-    if(["today","panTimeline","zoomTimeline","resetTimelineZoom","jumpTimelineDay","browseMonth","selectMonthDate","selectMonth","timeline","month","memo","ai",
+    if(["today","panTimeline","zoomTimeline","setTimelineCamera","resetTimelineZoom","jumpTimelineDay","browseMonth","selectMonthDate","selectMonth","timeline","month","memo","ai",
       "toggleMemo","sendChat"].includes(name))postState();
   }catch(error){logAction("Bridge 消息错误："+error.message)}
 }

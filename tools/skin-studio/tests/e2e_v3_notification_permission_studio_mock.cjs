@@ -197,10 +197,27 @@ async function main(){
     await frameEval(`document.querySelector('#openAiSettings').click()`);
     await waitFor(evaluate,"document.querySelector('#bridgeLog').textContent.includes('此页面不启动 Android Host')",
       "Mock protected AI settings route");
+    await evaluate("onSkinAction(JSON.stringify({version:1,type:'action',payload:{name:'today'}}))");
+    const cameraBefore=await evaluate("({anchor:mockAnchor,hours:mockHours})");
+    await evaluate("lastState.timeline.zoneId='America/Los_Angeles';"+
+      "onSkinAction(JSON.stringify({version:1,type:'action',payload:{name:'setTimelineCamera',"+
+      "anchorMillis:-2209075200000,hours:18}}))");
+    await waitFor(evaluate,"document.querySelector('#bridgeLog').textContent.includes('拒绝无效 setTimelineCamera payload')",
+      "Studio Mock rejects a camera timestamp outside the Host local-year range");
+    const cameraAfter=await evaluate("({anchor:mockAnchor,hours:mockHours})");
+    if(JSON.stringify(cameraBefore)!==JSON.stringify(cameraAfter))
+      throw Error("Rejected camera action changed the Studio Mock state");
+    await evaluate("onSkinAction(JSON.stringify({version:1,type:'action',payload:{name:'setTimelineCamera',"+
+      "anchorMillis:Date.parse('2026-11-07T12:00:00Z'),hours:18.004479170255458}}))");
+    await waitFor(frameEval,"document.querySelector('#timeRangeLabel').textContent==='18.0 小时 / 屏'",
+      "Timeline camera label matches frozen Native one-decimal presentation");
     const nativeToolsRoute=await frameEval("document.querySelector('[data-action=\\\"nativeSettings\\\"]')===null&&"+
       "document.querySelector('#settings-recovery-section')===null");
     if(!nativeToolsRoute)
       throw Error("Studio preview still exposes the ordinary Native Tools route");
+    await evaluate("onSkinAction(JSON.stringify({version:1,type:'action',payload:{name:'nativeSettings'}}))");
+    await waitFor(evaluate,"document.querySelector('#bridgeLog').textContent.includes('拒绝未知动作 nativeSettings')",
+      "Reject retired Native settings action outside the formal binding catalog");
     const result={
       status:"PASS",
       scope:"Chrome/CDP Skin Studio Preview Mock; no Android permission or Native settings launched",
@@ -217,6 +234,9 @@ async function main(){
       profileSourceEditor:sourceEdit,
       skinCatalogueAbsent:true,
       ordinaryNativeToolsRoute:false,
+      retiredNativeSettingsActionRejected:true,
+      localYearCameraBoundaryRejected:true,
+      pinchSpanLabelMatchesNative:"18.0 小时 / 屏",
       mockLog:(await evaluate("document.querySelector('#bridgeLog').innerText")).split("\n").slice(0,5)
     };
     const resultPath=path.join(reportDir,`studio-mock-${runId}.json`);

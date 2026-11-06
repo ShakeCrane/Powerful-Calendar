@@ -45,7 +45,7 @@ class PresentationBoundaryTests(unittest.TestCase):
         host = (UI / "HostProtectedSettings.kt").read_text("utf-8")
         api = (SKIN_API / "SettingsVisualContext.kt").read_text("utf-8")
         renderer = (NATIVE_SKIN / "NativeProtectedAiSettingsSection.kt").read_text("utf-8")
-        self.assertIn("internal fun HostProtectedAiSettingsSection()", host)
+        self.assertRegex(host, r"internal fun HostProtectedAiSettingsSection\(onDirtyChange:")
         self.assertIn(
             "internal fun HostProtectedProfileSection(settingsDataApi: SettingsDataFeatureApiV1)",
             host,
@@ -68,8 +68,9 @@ class PresentationBoundaryTests(unittest.TestCase):
             self.assertIn(key + " = null", registry)
         self.assertIn("CompiledSkinRuntime.restoreNativeTimeline()", registry)
         self.assertIn("DeckPresentationSkinRegistry.reset()", registry)
-        self.assertEqual(example.count("const val PROFILE = \"native\""), 1)
-        self.assertIn("PresentationSkinRegistry.useChrome(StudioExampleChrome())", example)
+        self.assertNotIn("const val PROFILE", example)
+        self.assertIn("fun install() = NativeSkinHostRegistration.install()", example)
+        self.assertNotIn("StudioExampleChrome", example)
 
     def test_runtime_activation_owns_no_database_or_reminder(self):
         starter = (REPO / "app/src/main/java/dev/powerfulcalendar/MainActivity.kt").read_text("utf-8")

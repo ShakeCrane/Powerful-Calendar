@@ -2240,6 +2240,17 @@ fun PowerCalApp(
                         hours = TimelineCoordinate.clampHours(hours * multiplier)
                     }
                 }
+                is WebSkinAction.SetTimelineCamera -> {
+                    if (page == Page.TIMELINE.name) {
+                        val year = runCatching {
+                            java.time.Instant.ofEpochMilli(action.anchorMillis).atZone(zone).year
+                        }.getOrNull()
+                        if (year != null && year in 1900..2200) {
+                            anchorMillis = action.anchorMillis
+                            hours = TimelineCoordinate.clampHours(action.hours)
+                        }
+                    }
+                }
                 WebSkinAction.ResetTimelineZoom -> {
                     if (page == Page.TIMELINE.name) hours = 24.0
                 }

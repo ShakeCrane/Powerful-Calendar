@@ -13,22 +13,23 @@ class NativeRecoveryContractTest(unittest.TestCase):
         self.assertIn("skins.install(uri)", snippet)
         self.assertNotIn("skins.select(result.id)", snippet)
 
-    def test_native_settings_and_hidden_activity_rescue_are_both_available(self):
+    def test_native_recovery_is_host_owned_and_not_a_skin_action(self):
         app = (UI / "PowerCalApp.kt").read_text(encoding="utf-8")
         shell = (UI / "SkinnableChrome.kt").read_text(encoding="utf-8")
         web = (UI / "WebSkinHost.kt").read_text(encoding="utf-8")
         activity = (ROOT / "app/src/main/java/dev/powerfulcalendar/MainActivity.kt").read_text(encoding="utf-8")
         self.assertIn("forceNative = tools", app)
         self.assertIn("if (forceNative) native()", shell)
-        self.assertNotIn("onOpenNativeSettings", web)
-        self.assertIn("statusBarsPadding().navigationBarsPadding()", web)
+        self.assertNotIn("nativeSettings", web)
+        self.assertIn("padding(top = topSystemInset).navigationBarsPadding()", web)
         self.assertIn("failureReported.compareAndSet(false, true)", web)
         self.assertIn("currentOnSkinFailure()", web)
         self.assertIn("onFailure = reportFailure", web)
         self.assertIn("override fun dispatchTouchEvent", activity)
         self.assertIn("AlternatingTapRecovery", activity)
-        self.assertIn("selectNativeForEmergencyRecovery()", activity)
-        self.assertIn("nativeRecoveryPersisted = SkinPackageManager(applicationContext)", activity)
+        self.assertIn("LaunchedEffect(nativeRecoverySignal)", app)
+        self.assertIn("skins.selectNativeForEmergencyRecovery()", app)
+        self.assertIn("page = Page.TOOLS.name", app)
         self.assertIn("nativeRecoverySignal++", activity)
 
     def test_skin_switch_warns_and_requires_explicit_confirm(self):

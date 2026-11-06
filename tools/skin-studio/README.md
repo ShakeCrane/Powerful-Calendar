@@ -40,9 +40,8 @@ python tools/skin-studio/build_default_clear.py --verify --apk app/build/outputs
 - 上传 PNG、WebP 和字体素材并保留字节；给已有 `data-action` 按钮设置图标素材。
 - 模拟常规、空白、密集、重复、AI 锁定、AI 请求失败后手动重发和提案审核场景；用真实 v1 消息结构模拟宿主的
   `state/action`，包括时间轴状态、重复实例身份及 `optionGroups`。
-- Clear 设置页会显示 Host 投影的已安装皮肤目录，并通过 `selectSkin` 请求 Host 确认；Preview Mock 允许模拟确认或取消，但不会启用 Android 皮肤或写入设备数据。
-- Clear 的 AI/隐私入口通过版本化 `openAiSettings` Host 动作打开受保护 Compose 表单，保留当前 Skin 设置页；密钥不进入 Web bridge。Preview Mock 只记录动作，不读取密钥、启动 Android Host 或保存真实偏好。独立恢复入口仍使用 `nativeSettings`。
-- Clear 设置中的皮肤导入、Clear/第三方包导出和第三方包删除使用现有 Host 文件选择器、`SkinPackageManager` 与 Native 确认。Preview Mock 用本地 fixture 模拟导入/导出/删除，不调用 Android SAF、不写入已安装皮肤或日历数据。API 35 的 ActivityResult 注入回归证明了 Host 收到结果后的安装、字节导出和确认删除；它没有覆盖系统 DocumentsUI、真实文档提供方及其失败恢复。
+- 正式 Clear 设置页不提供已安装皮肤目录、皮肤选择、导入、导出或删除入口。Studio 的 `.pcskin` 导入/导出用于编辑 Skin 项目，不会安装、替换或删除 App 中的皮肤。
+- Clear 的 AI/隐私入口通过版本化 `openAiSettings` Host 动作打开受保护 Compose 表单，保留当前 Skin 设置页；密钥不进入 Web bridge。Preview Mock 只记录动作，不读取密钥、启动 Android Host 或保存真实偏好。Native 紧急恢复由独立 Host 路径提供，不是 Skin Host action；Preview Mock 会拒绝目录中不存在的 `nativeSettings` 动作。
 - 重复事件保存预览会显示“模拟确认/模拟取消”；这只是 Studio 的 Mock，Android 实际写入必须经过 Host 的原生确认。重复范围编辑源文件为 `web/edit.js`，与导出包及 Android Clear 资产同源。
 - 通过“软件新增平行功能”场景检查通用选项列表是否自动继承新的同级选项。
 - Clear 设置中的个人资料表单由可编辑的 HTML/CSS/JS 渲染；Android Host 仅在用户打开表单时投影显示名称，并且只在明确保存后写入个人资料偏好。Studio Preview Mock 使用合成名称，不读取 Android 偏好或写入设备数据；离开设置页或切换活动皮肤会清除模拟投影。

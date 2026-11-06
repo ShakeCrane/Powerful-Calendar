@@ -437,6 +437,8 @@ class WebSkinHostProjectionTest {
             decode("""{"name":"zoomTimeline","direction":"in"}"""))
         assertEquals(WebSkinAction.ZoomTimeline(TimelineZoomDirection.OUT),
             decode("""{"name":"zoomTimeline","direction":"out"}"""))
+        assertEquals(WebSkinAction.SetTimelineCamera(1_798_765_200_000L, 18.25),
+            decode("""{"name":"setTimelineCamera","anchorMillis":1798765200000,"hours":18.25}"""))
         assertEquals(WebSkinAction.ResetTimelineZoom,
             decode("""{"name":"resetTimelineZoom"}"""))
         assertEquals(WebSkinAction.JumpTimelineDay("2026-10-22"),
@@ -479,6 +481,10 @@ class WebSkinHostProjectionTest {
         assertNull(decode("""{"name":"zoomTimeline","direction":"middle"}"""))
         assertNull(decode("""{"name":"zoomTimeline","direction":1}"""))
         assertNull(decode("""{"name":"zoomTimeline","direction":"in","hours":1}"""))
+        assertNull(decode("""{"name":"setTimelineCamera","anchorMillis":1798765200000.5,"hours":18}"""))
+        assertNull(decode("""{"name":"setTimelineCamera","anchorMillis":1798765200000,"hours":0.1}"""))
+        assertNull(decode("""{"name":"setTimelineCamera","anchorMillis":1798765200000,"hours":49}"""))
+        assertNull(decode("""{"name":"setTimelineCamera","anchorMillis":1798765200000,"hours":18,"storeWrite":true}"""))
         assertNull(decode("""{"name":"resetTimelineZoom","hours":24}"""))
         assertNull(decode("""{"name":"jumpTimelineDay","date":"2026-10-32"}"""))
         assertNull(decode("""{"name":"jumpTimelineDay","date":"2500-01-01"}"""))
