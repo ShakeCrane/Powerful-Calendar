@@ -663,8 +663,12 @@ private class WebSkinWebSession {
     }
 }
 
+private const val MAX_WEB_SKIN_ACTION_JSON_CHARS = 40_960
+
 internal fun decodeBridgeAction(raw: String): WebSkinAction? {
-    if (raw.length !in 1..8_192) return null
+    // A 6,000-code-unit chat message can expand to six JSON characters per
+    // control character. Keep the envelope bounded without rejecting valid input.
+    if (raw.length !in 1..MAX_WEB_SKIN_ACTION_JSON_CHARS) return null
     val message = runCatching { JSONObject(raw) }.getOrNull() ?: return null
     if (message.keys().asSequence().toSet() != setOf("version", "type", "payload")) return null
     if (message.optInt("version") != WebSkinBridgeRuntime.VERSION ||
@@ -761,7 +765,7 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
         "sendChat" -> {
             if (keys != setOf("name", "text")) return null
             val text = payload.opt("text")
-            if (text is String && text.isNotBlank() && text.length <= 4000)
+            if (text is String && text.isNotBlank() && text.length <= 6_000)
                 WebSkinAction.SendChat(text)
             else null
         }

@@ -502,6 +502,122 @@ class PowerCalAiProposalReviewWebViewInstrumentedTest {
     }
 
     @Test
+    fun clearWebChatAcceptsCoreMaxLengthAtRealWebViewInputBoundary() {
+        val storage: Context = compose.activity.applicationContext
+        val namespace = "pc-ai-chat-limit-${UUID.randomUUID()}"
+        val context = IsolatedAppContext(compose.activity, storage, namespace)
+        val database = "chat-limit.db"
+        val store = PowerStore(context, database)
+        val prompt = "p".repeat(6_000)
+        val assistantReply = "The bounded local provider received the complete message."
+        val requestBody = AtomicReference<String?>()
+        val serverFailure = AtomicReference<Throwable?>()
+        val served = CountDownLatch(1)
+        var web: WebView? = null
+
+        try {
+            store.readableDatabase
+            val storeBefore = listOf(store.draftCount(), store.pendingCount().toLong(),
+                store.identityCount(), store.commitCount(), store.nextSequencePreview())
+            context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            AiChatHistoryStore.save(context, emptyList())
+
+            ServerSocket(0, 2, InetAddress.getByName("127.0.0.1")).use { server ->
+                server.soTimeout = 60_000
+                AiSettingsStore.save(context, AiSettings(
+                    endpoint = "http://127.0.0.1:${server.localPort}/v1",
+                    model = "local-stub:free",
+                    apiKey = "LOCAL_TEST_ONLY",
+                    enabled = true,
+                    shareContext = false
+                ))
+                val serverThread = Thread {
+                    try {
+                        server.accept().use { socket ->
+                            socket.soTimeout = 20_000
+                            requestBody.set(readRequest(socket))
+                            writeReply(socket, assistantReply)
+                        }
+                    } catch (error: Throwable) {
+                        serverFailure.set(error)
+                    } finally {
+                        served.countDown()
+                    }
+                }.apply { name = "pc-ai-web-chat-limit-local-stub"; isDaemon = true; start() }
+
+                compose.runOnUiThread {
+                    PowerCalSkinRegistry.reset()
+                    SkinPackageManager(context).select("powercal-clear-default")
+                    compose.activity.setContent {
+                        CompositionLocalProvider(LocalContext provides context) {
+                            PowerCalTheme { PowerCalApp(store) }
+                        }
+                    }
+                }
+                compose.waitUntil(30_000) {
+                    compose.runOnUiThread {
+                        web = findWebView(compose.activity.findViewById(android.R.id.content))
+                    }
+                    web != null
+                }
+                val view = requireNotNull(web)
+                awaitJs(view, "document.querySelector('#chatInput')?.maxLength===6000")
+                compose.runOnUiThread {
+                    WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("ai"))
+                }
+                awaitJs(view, "!document.querySelector('#aiPage').hidden")
+                awaitJs(view, "(()=>{const input=document.querySelector('#chatInput');" +
+                    "input.value=${JSONObject.quote(prompt)};" +
+                    "input.dispatchEvent(new Event('input',{bubbles:true}));" +
+                    "return input.value.length===6000&&input.maxLength===6000})()")
+                awaitJs(view, "(()=>{document.querySelector('#chatForm').requestSubmit();return true})()")
+
+                compose.waitUntil(65_000) { served.count == 0L || serverFailure.get() != null }
+                assertNull("local chat stub failed: ${serverFailure.get()?.javaClass?.simpleName}",
+                    serverFailure.get())
+                serverThread.join(2_000)
+                assertTrue("The Native/Core 6,000-code-unit limit must reach the local provider",
+                    requestBody.get() != null)
+                val sentMessages = JSONObject(requireNotNull(requestBody.get()))
+                    .getJSONArray("messages")
+                val userMessages = (0 until sentMessages.length()).map { sentMessages.getJSONObject(it) }
+                    .filter { it.optString("role") == "user" }
+                assertEquals(1, userMessages.size)
+                assertEquals(prompt, userMessages.single().getString("content"))
+                compose.waitUntil(20_000) {
+                    AiChatHistoryStore.load(context).any {
+                        it.role == "assistant" && it.content == assistantReply
+                    }
+                }
+                awaitJs(view, "document.querySelector('#chatMessages')?.textContent.includes(" +
+                    "${JSONObject.quote(assistantReply)})")
+                assertEquals("No calendar Store operation is part of sending a chat turn", storeBefore,
+                    listOf(store.draftCount(), store.pendingCount().toLong(), store.identityCount(),
+                        store.commitCount(), store.nextSequencePreview()))
+                assertEquals(listOf("user" to prompt, "assistant" to assistantReply),
+                    AiChatHistoryStore.load(context).map { it.role to it.content })
+                println("NATIVE_095_AI_INPUT_LIMIT webViewMaxLength=6000 " +
+                    "hostCoreProviderMessageLength=${prompt.length} " +
+                    "coreCalendarStoreWrites=0 actualWebViewBridge=true")
+            }
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            store.close()
+            context.deleteDatabase(database)
+            listOf("powercal-ai", "powercal-onboarding", "powercal-ui", "powercal-skin-choice",
+                "powercal-profile", "powercal-file-ai-consent").forEach { name ->
+                storage.deleteSharedPreferences("$namespace-$name")
+            }
+            File(storage.cacheDir, namespace).deleteRecursively()
+        }
+    }
+
+    @Test
     fun nativeAndClearRealChatSendMatchHistoryAndRespectDisabledContextSharing() {
         val storage: Context = compose.activity.applicationContext
         val nativeNamespace = "pc-ai-chat-parity-native-${UUID.randomUUID()}"

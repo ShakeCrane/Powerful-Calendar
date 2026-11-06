@@ -29,7 +29,7 @@ Owner 于 2026-11-05 明确将 **2026-10-27 冻结的 PowerCal 0.9.5-rc.1 原生
 | 时间轴 | NativeTimelineScreen：中心垂直时间尺、ALARM 左翼与 ACTIVITY/DEADLINE 右翼、真实时间区间、蓝色现在标记、框外标题、按实际文字矩形贪心折叠、双翼滚动/相机/缩放、双击时间尺复位 24 小时、今日定位本地中午、事件点击、受阻提示与四类新建。 | 当前 renderTimeline、title-folding.js、.timelineWing/.timelineLanes 通过现有正式投影/Host；最新 current-web-native095-timeline-final.png 已采用 Native 页面背景、标题、控制行与四项底栏。固定 ACTIVITY 夹具已测折叠触控和 Camera。 | 同数据 ACTIVITY 固定夹具的事件行/填色/主要文字位置接近，仍有约 1px 横向边界与字形栅格差。完整 ALARM、DEADLINE、重复实例、长标题/多泳道、大字体与空/忙/错误状态未签核；Timeline 整页仍 PARTIAL。 |
 | 月历 | 冻结 Native Month：保留 Camera、今天、前后月、年份/月选择、横向切月、七列日格、日期/事件/重复实例选择与跳转时间轴。 | Web v3 的月份/日期投影与 agenda 继续使用既有 Host/Core；以冻结原始 APK 对照同一隔离 API 35 WebView。 | 已完成窄切片：agenda 卡片/日期标题、底部操作按钮、年份/月选择弹窗的面板内容/焦点/取消/遮罩/选择触控各自有实屏证据。弹窗边界约差 1px，Core Store 不变。仍 PARTIAL：Android 系统状态栏/导航栏未随 Web 对话框压暗；月格/agenda 仍有已记录的细微 raster 差；深色、空态/密集态、TalkBack 和完整 Month 状态矩阵未签核。 |
 | Memo / 待办 | NativeMemoCenterScreen：返回与新增无日期 Memo、Open/Done、完成后可撤销、行内完成/撤销、标题打开编辑、分页；重复待办范围由 Host 提供。 | 当前 memoPage/renderMemo 采用同一返回、新增、完成筛选、分页和四项底栏；真实 WebView 空态截图 current-web-native095-memo-final.png 与 Native 结构接近。 | 空态文字基线/垂直位置、列表分隔线和行密度仍需固定数据对照；完整行点击、完成撤销和分页虽有旧 F-04 证据，未在本轮以相同 Native/Web fixture 重放。Memo 整页 PARTIAL。 |
-| AI 聊天 | NativeAiChatScreen：标题/副标题、配置、待处理菜单、消息列表、消息长按菜单、附件“+”、输入/发送、忙碌状态和独立提案审核卡。 | 当前 aiPage/renderChat 已有 Native 风格标题、待处理溢出菜单、附件入口和 Host 消息动作；消息角色标签与长按菜单已补齐，Web 状态仅暴露 proposalAvailable 布尔值，Host 按 messageId/revision 取规范消息。 | 该消息动作子集 Android 触控测试通过；本次未取得原始 APK 消息菜单的实屏截图，故 Native/Web 菜单像素对照 NOT TESTED。AI 历史、附件授权、提案审核、错误/重试仍未逐状态签核；当前额外发送说明文字与 Native 空态文案布局有差异。AI 页面 PARTIAL。 |
+| AI 聊天 | NativeAiChatScreen：标题/副标题、配置、待处理菜单、消息列表、消息长按菜单、附件“+”、输入/发送、忙碌状态和独立提案审核卡；冻结 Native 输入限制为 6000 个 UTF-16 code unit。 | 当前 aiPage/renderChat 已有 Native 风格标题、待处理溢出菜单、附件入口和 Host 消息动作；消息角色标签与长按菜单已补齐，Web 状态仅暴露 proposalAvailable 布尔值，Host 按 messageId/revision 取规范消息。2026-11-06 已将 Web 输入、Host action 解码限制对齐至 Core 当前实现的 6000 字符，并扩大有界 JSON 包络以容纳合法 JSON 转义。 | 输入长度窄切片 PASS：Core 实现上限 6000，WebView `maxlength` / submit、Host 解码和本地 Stub 端到端收到 6000 字符；过限和转义包络边界由 JVM 覆盖。该设备用例以 JS 设置输入、触发真实页面表单提交，未验证原始 APK 的物理键盘输入。AI 历史 40 条/1600 字投影、附件授权、提案审核、错误/重试仍未逐状态签核；原始 APK 消息菜单实屏对照 NOT TESTED；AI 页面仍 PARTIAL。 |
 | 设置 / 工具 | 冻结 NativeToolsPage 含资料、AI 受保护配置、通知/精确闹钟、提醒重建/诊断、系统日历导入、只读迁移、备份恢复、ICS 导出。 | 当前普通 settings Host action 路由至 Page.SETTINGS 并由 Web settingsPage/renderSettings 表现；仅显式 nativeSettings 进入 Page.TOOLS 安全恢复。AI 密钥输入为 Host Compose 受保护表面，不投影给 Web。 | 真实 Web 设置截图保持四项底栏和原生式卡片顺序；卡片白底/阴影与 Native 轮廓面、资料编辑入口和间距仍不同。原始 Native 皮肤目录是已退役产品入口，不得移植；系统 SAF、权限和可信密钥面继续归 Host。 |
 | 待处理草稿卡组 | NativeDraftDeckScreen：卡片堆叠、卡内/卡外滑动、逐卡/快速浏览、搜索、恢复/删除、空态、AI 批次进度、冲突、审批/撤销/关闭。 | 当前 #pendingDeck 具备卡组、发布、搜索、恢复、删除和退出动作，调用正式 Host/Core。 | Native 是深色 scrim 上的白色浮层/叠卡；Web 当前仍为高面积的全高白色编辑/卡组面板。视觉层级、拖动/滚动手势、错误/冲突状态需移植并实触。 |
 | 四类事件编辑与详情 | NativeDirectEventEditor、NativeDeckEventForm、NativeEventInspection：类型、标题、时段/日期、地点/备注、提醒/启用、重复规则/作用域、详情与前后状态；只在业务变化后暂存。 | Web edit.js 现有四类编辑、草稿、日期/时间选择与动作调用；旧 F-05/F-06 业务 API 路径保留。 | Native 是覆盖当前页面的暗 scrim 编辑面并有紧凑底部动作；Web 用高面积极白面板及纵向表单。旧 Web 截图里“1 张·已暂存”是编辑会话计数，关闭后 Store 为 0；须保持实际零写入并让可见状态不误导。四类表单与取消/审核视觉仍 PARTIAL。 |
@@ -729,6 +729,19 @@ AI 输入/历史长度、编辑器布局、跨状态相机、其他 Native 页�
 原始 APK 与已安装 `base.apk` SHA-256 均为 `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`；Web debug APK SHA-256 `39A89C98A0789963EFABCD8DC13106D55859ADCBB24378B10D11920ACA91D634`；默认包 SHA-256 `7AA3700A0D1E1CE1F19943CE012595E55A933B8D75FBFDBE306987537CDFE3EC`，资源中仍只有一个 `.pcskin`。全量 JVM 982/982、源码边界、assemble、Lint、AndroidTest 编译均 PASS；设备定向用例 1/1 PASS。
 
 留存差异：原始 APK 的单一上缘触点与 Web instrumentation 的双边缘触点使用不同的隔离测试数据/相机位置，因此这组材料证明行为可达性，不是完整的同像素 A/B 比较。截图与精确命令在 ignored `.local` 报告中；全 Timeline、框外标题、密集事件及其他 Native 页面仍为 `PARTIAL`。
+
+## 2026-11-06 AI 聊天输入长度边界对齐（窄切片 PASS）
+
+冻结源码 `b1f7629f0c52812e1887443872f43aa6c49908c4` 的 `AiChatScreen.kt` 与 `AiClient.kt` 均允许最多 6000 个 UTF-16 code unit；Core 当前 `StoreAiFeatureApiV1.MAX_CHAT_MESSAGE_CHARS` 也是 6000。审计发现 Web `textarea`、表单提交 guard 和 `WebSkinHost.decodeBridgeAction` 均只允许 4000，此外 action JSON 包络 8192 字符会拒绝部分合法的长转义消息。
+
+- 将 Clear 的 `maxlength`、JS 提交边界和 Host `sendChat` 解码边界统一到 6000；没有修改 Core/API 业务语义或 AI 服务商限制。
+- 把完整 action JSON 的输入上限设为 40,960 字符。解码后仍会单独执行每个 action 的闭合 schema 校验，`sendChat` 文本仍不得超过 6000；该包络上限可以容纳 6000 个 JSON 最长转义单元及其固定字段。
+- `WebSkinHostProjectionTest` 覆盖 6000 接受、6001 拒绝、6000 个需六字符 JSON 转义的控制单元仍可解码，以及 40,961 字符包络拒绝。
+- 在隔离 API 35 AVD `PowerCal_Wave2_QA35_20261104` / `emulator-5556` / WebView 124.0.6367.219 上，实际 APK WebView 测试确认 DOM `maxlength=6000`，使用本地 Stub 经过页面 submit → WebMessagePort → Host → Core → Provider 收到完整 6000 字符，并确认聊天持久化及 Calendar Store 快照不变。用例 `clearWebChatAcceptsCoreMaxLengthAtRealWebViewInputBoundary` 1/1 PASS。输入值由测试脚本装入 DOM，提交走真实 WebView 页面处理器；本次没有验证真实软键盘逐字输入或原始 APK 的 6000 字符端到端输入。
+- 全串行 Gradle 门禁 `983/983` JVM、0 failures/errors/skips，源码边界、APK、Lint、AndroidTest compile/package PASS；Studio `e2e_clear_studio_bridge.cjs` PASS。唯一包 `powercal-clear-default.pcskin` 10 files / 411736 bytes，源码与 APK 内资产 SHA-256 均为 `2c503559a2cd7fae57c2f40e529a05913d41b3192931458d17771af2714f9e4e`；APK 仅含一份 `.pcskin`；Debug APK SHA-256 `EF29297DF78D253E2A9C3ED03B24C81664CC23CD2A429874B8C7E348D3E3789B`。
+- 两次测试构造尝试未计作 PASS：第一次在 Native Compose 6000 字符本地 Stub 回复等待处超时，未进入 Web 路径；第二次独立 Web 测试的自动触屏目标落到 `MAIN` 而未到导航控件。最终用例通过直接设置 Host 路由隔离导航触控因素，再验证真实 WebView 表单消息桥。具体命令、每次结果和日志见 `.local/android-test/reports/native095-ai-input-20261106/manifest.md`。
+
+这只关闭输入长度窄差异。AI 的历史记录投影（Native 显示传入的完整有界历史，Web 当前仅投影最近 40 条且每条截至 1600 字）、附件、提案、错误/重试以及原始 APK 菜单像素对照仍未签核；AI 页面和 Product Cutover 保持 `PARTIAL` / `HOLD`。
 
 ## 2026-11-06 点位目标同夹具几何与边界触控复测
 

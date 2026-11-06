@@ -130,6 +130,25 @@ class WebSkinHostProjectionTest {
         assertNull(decode("""{"name":"rewindChat","messageId":"id","historyRevision":7,"editAndResend":false,"content":"forged"}"""))
     }
 
+    @Test fun chatInputAcceptsCoreLimitAndRejectsTheNextCharacter() {
+        fun decode(text: String) = decodeBridgeAction(
+            JSONObject().put("version", 1).put("type", "action")
+                .put("payload", JSONObject().put("name", "sendChat").put("text", text)).toString()
+        )
+
+        val atLimit = "p".repeat(6_000)
+        assertEquals(WebSkinAction.SendChat(atLimit), decode(atLimit))
+        assertNull(decode("p".repeat(6_001)))
+
+        val jsonEscapedAtLimit = "\u0000".repeat(6_000)
+        val escapedPayload = JSONObject().put("version", 1).put("type", "action")
+            .put("payload", JSONObject().put("name", "sendChat")
+                .put("text", jsonEscapedAtLimit)).toString()
+        assertTrue(escapedPayload.length > 8_192)
+        assertEquals(WebSkinAction.SendChat(jsonEscapedAtLimit), decodeBridgeAction(escapedPayload))
+        assertNull(decodeBridgeAction(" ".repeat(40_961)))
+    }
+
     @Test fun exposesTrueIntervalsOwnerRevisionAndNoPrivilegedContent() {
         val payload = project(listOf(activity(7)))
         assertTrue(payload.getBoolean("hasRecords"))
