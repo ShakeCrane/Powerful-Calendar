@@ -2778,3 +2778,12 @@ API 35 emulator-5570 真实触控 Native Compose 与打包 Clear WebView 的无 
 - Debug APK SHA-256 `254d2ff1a8e4da4ebb3af4cbbffd68f9a2f3c13ff92fdf57cbd2ac3f509683de`; canonical `powercal-clear-default.pcskin` is one package, 10 files / 410938 bytes / SHA-256 `a60e791b35d8793082fd944974b6a05cc45a6d1b8040af8ff891a5985458f964`, source/APK bytes identical. API 35 installed `base.apk` SHA matches.
 - Raw APK and final Web screenshots have different test event data; only header/footer coords are compared. Same-fixture native Compose/Web screenshot and DOM geometry evidence plus full logs are under `.local/android-test/reports/native095-empty-date-band-20261106/`. Studio full Python previously ran 86/89 with 3 existing source-shape failures; it was not rerun after the final scale-only tweak and is not counted as full PASS.
 - Independent issues: `PC-ISSUE-SEPARATION-NATIVE-TIMELINE-EMPTY-DATE-BAND-20261106.md`, `PC-ISSUE-SEPARATION-NATIVE-SHELL-STATUS-INSET-20261106.md`. Current work remains `NATIVE_095_VISUAL_PARITY_IMPLEMENTATION`; Timeline, Month, event editor and other pages are not fully signed off. Native recovery and single package identity remain intact; Product Cutover HOLD.
+
+
+## Native 0.9.5 raw APK / Web v3 双翼初始视口（2026-11-06）
+
+- 窄切片 PASS；Timeline 总体仍 PARTIAL。用冻结原始 APK 与 Web v3 在两个隔离 API 35 AVD 上运行相同八事件夹具，发现 Web 左翼首次渲染错误滚至 scrollWidth；改为初始 scrollLeft=0，lane 3 起点与 Native 物理 x 差小于 1px，右翼差约 0.64px。后续重绘保留滚动位置。
+- Native/Web 双翼独立触控与事件打开测试各 1/1 PASS；Store counts 在打开/返回后保持 drafts=0、commits=8、identities=8。原始事件编辑器实屏触控证据已保存。
+- 完整串行 Gradle 门禁 PASS，977/977 JVM、0 failures/errors/skips；源码边界、assemble、lint、AndroidTest compile/package PASS。Node 语法及默认分发 Python 2/2 PASS；正式包校验确认唯一 powercal-clear-default.pcskin 与 APK 资源字节相同。
+- 当前 APK SHA-256 070FCF76FCEA8A4CCEC86A5F6B516A7FE2FE2ACDD5DFC89861C7E920211FE192；默认包 SHA-256 8a679cb53be26fb1b4fb53f4e0361ac02b802a80e773e74b19b45b3ec6374dca；实现提交 4194d513826e6104d85c4aadee23cfb066e2a45b。
+- 证据目录 .local/android-test/reports/native095-raw-dualwing-20261106/；截图和命令日志索引位于其 manifest.md。没有改动 Core/Host 业务逻辑、Native 恢复、用户数据或默认 Skin ID。整体 Native-to-Web parity 继续 IN_PROGRESS，Product Cutover HOLD。

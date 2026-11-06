@@ -1,6 +1,6 @@
 # PC-ISSUE-SEPARATION-NATIVE-TIMELINE-WINGS-20261106
 
-**状态：PASS（双翼边界与独立水平滚动窄切片；冻结原始 APK 直接对照尚未完成）**
+**当前状态：PASS（双翼边界、独立水平滚动及原始 APK 同夹具初始视口对照；Timeline 整页仍 PARTIAL）**
 **代码提交：** `f55140a2697befe483188c88052d1c5b4c8c22b4`
 **日期：**2026-11-06
 
@@ -28,3 +28,16 @@ Owner 指定基准为冻结 Native PowerCal 0.9.5-rc.1，源码 SHA `b1f7629f0c5
 Gradle、Android instrumentation、截图及包哈希记录见 `.local/android-test/reports/native095-timeline-wings-20261106/manifest.md`。截图 Native SHA-256 `F02AC6D5AE3B4B2018A4DE58E2339A104A317164FA77AF1B30E98E141F044E4F`，Web SHA-256 `40BB080210AA1C75A0AEE0941863CC92ECAD40DCE5D886FE9353C9F7E7582C08`。
 
 本切片没有修改 Core、Host 业务逻辑、Native 恢复、皮肤 ID 或 Store 语义。Timeline 整页保持 `PARTIAL`；原始 APK 同夹具直接对照、其他事件类型/状态、标题/颜色/卡片视觉、深色与大字体仍需逐项迁移验证。Product Cutover 保持 `HOLD`。
+
+
+## 2026-11-06 原始 APK 同夹具复核：左翼初始可见项差异已关闭
+
+本补记更新本文上方记录的原始 APK 对照未完成状态；上方内容保留为原始实施时的历史证据边界。
+
+冻结 APK 实际运行显示左翼初始 scroll=0，Web v3 初始则滚到了 scrollWidth，导致相同多 lane 夹具最靠左的 lane 3 不可见。renderTimeline() 现在在初始布局和首次 overflow 转换时将左翼置于 scrollLeft=0，之后仍保留用户滚动位置；无 Core/Host 业务变化。实现提交：4194d513826e6104d85c4aadee23cfb066e2a45b。
+
+在 PowerCal_Native095_RawFixture_20261106 / emulator-5590 原始 APK 与 PowerCal_Wave2_QA35_20261104 / emulator-5556 Web v3 上，使用相同 API 35、1080×2400、420dpi、GMT 环境及八个合成事件。Native 左/右目标 x 为 32/824px；Web 换算为 31.46/823.36px。双边真实滚动各自独立；点开 WING_RIGHT_1 后关闭，Store 计数维持 drafts=0、commits=8、identities=8。原始 APK 与 Web 仪器方法均 1/1 PASS。
+
+本次 serial Gradle gate：977/977 JVM、0 failures/errors/skips；两项源边界、assemble、lint、AndroidTest compile/package PASS。默认 .pcskin 正式构建/校验 PASS，仍只有一个 powercal-clear-default 包。APK SHA-256 070FCF76FCEA8A4CCEC86A5F6B516A7FE2FE2ACDD5DFC89861C7E920211FE192，源包/APK 资源 SHA-256 8a679cb53be26fb1b4fb53f4e0361ac02b802a80e773e74b19b45b3ec6374dca。
+
+截图与完整日志见 .local/android-test/reports/native095-raw-dualwing-20261106/manifest.md。本修复只关闭双翼首次位置差异；Timeline 总体及其他页面仍 PARTIAL，Product Cutover HOLD。

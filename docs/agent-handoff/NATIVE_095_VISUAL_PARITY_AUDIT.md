@@ -532,3 +532,30 @@ Timeline 整页仍 `PARTIAL`：本切片没有签核 ALARM 左翼、所有事件
 - 完整命令与 Gradle 输出位于 `.local/android-test/reports/native095-empty-date-band-20261106/full-gradle-gate-final.log`；截图与安装 APK 亦在同一证据目录。此前 ADB AVD 名检查脚本把额外的 `OK` 回执并入名称，安全地在安装前退出；修正为只解析 AVD 名行后，目标 AVD/API 核验及 APK 更新/仪器测试均成功。
 
 本轮只关闭**日期级 Deadline 空带/查询级空事件提示**和**API 35 顶部 inset**两个窄差异。Timeline 整页及其余原生页面仍为 `PARTIAL/IN_PROGRESS`；活动卡、所有事件种类、深色/大字体、页面交互及其它系统状态继续按差异清单移植。Native 安全恢复、Core 语义、皮肤 ID 和唯一工厂包数量未变；Product Cutover 继续 `HOLD`。独立问题记录：`PC-ISSUE-SEPARATION-NATIVE-TIMELINE-EMPTY-DATE-BAND-20261106.md`、`PC-ISSUE-SEPARATION-NATIVE-SHELL-STATUS-INSET-20261106.md`。
+
+## 2026-11-06 原始冻结 APK 与 Web v3 同夹具双翼初始位置（窄切片 PASS）
+
+本轮补上此前缺少的冻结原始 APK 进程直接对照。冻结源 SHA b1f7629f0c52812e1887443872f43aa6c49908c4；原始 APK SHA-256 DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76。
+
+### 差异与最小修复
+
+同一确定性八事件夹具下，冻结原始 Native 左翼初始 scroll=0，最左可见的 lane 3 事件从屏幕 x=32px 开始；右侧 lane 1 从 x=824px 开始。修复前 Web v3 在首次渲染/从无溢出转为溢出时把左翼滚到 scrollWidth，lane 3 离开视口。根因位于 tools/skin-studio/default-clear/source/web/app.js 的 renderTimeline()。现在这两种首次布局情形都从 scrollLeft=0 开始，后续重绘仍保留用户当前滚动值。左右翼仍是独立滚动容器；未改 Core、Host、Camera 或事件逻辑。默认包通过正式 build_default_clear.py 重建。
+
+### 原始 APK 与当前 Web v3 实测
+
+两台隔离 AVD 均为 API 35、1080×2400、420dpi、GMT，System WebView 124.0.6367.219；使用同一 2026-11-06 fixture，ALARM 左翼 lane 0..3 与 ACTIVITY 右翼 lane 0..3，eventSeq 1..8。
+
+| 对照 | 冻结原始 APK | Web v3 |
+|---|---:|---:|
+| 初始左翼位置 | scroll=0 / max 458px；lane 3 事件屏幕 x=32..253px | scrollLeft=0 / max 174 CSS px；lane 3 DOM x=12..96 CSS px，即屏幕 x≈31.46..251.65px |
+| 初始右翼位置 | scroll=0 / max 458px；lane 1 事件屏幕 x=824..1045px | scrollLeft=0 / max 174 CSS px；lane 1 DOM x=314.095..398.095 CSS px，即屏幕 x≈823.36..1043.55px |
+| 滚动行为 | 左右分别真实触控；仅目标翼内容移动 | Android WebView 真实 PointerEvent；仅目标翼内容移动 |
+| 打开事件 | 实际触屏打开 #0006 WING_RIGHT_1 编辑器 | WebView 真实触控打开正式事件编辑表面 |
+
+Raw AVD PowerCal_Native095_RawFixture_20261106 / emulator-5590；Web AVD PowerCal_Wave2_QA35_20261104 / emulator-5556。原始 APK 与其已安装副本均核对为上述冻结 APK SHA。Web debug 与 AndroidTest APK 使用 adb install -r 安装，未清除应用数据或 AVD。
+
+Native 和 Web 专项仪器测试各 1/1 PASS。gradle-full-gate.log 为 BUILD SUCCESSFUL：141 个 JVM XML、977/977、0 failures/errors/skips；两项源码边界、assembleDebug、lintDebug、AndroidTest Kotlin compile/package 均通过。Node 语法检查和默认分发测试 2/2 PASS。正式包校验确认 APK 只有 powercal-clear-default.pcskin 一份，10 files / 410935 bytes；源码与 APK 资源 SHA-256 均为 8a679cb53be26fb1b4fb53f4e0361ac02b802a80e773e74b19b45b3ec6374dca。Debug APK SHA-256 070FCF76FCEA8A4CCEC86A5F6B516A7FE2FE2ACDD5DFC89861C7E920211FE192。
+
+Raw/Web fixture Store 均为 drafts=0, commits=8, identities=8，无夹具外写入。Native 实际点开并关闭事件编辑器前后只读计数不变。截图：Native SHA-256 CF30CCD7CC76650802D6DF0778AE7D5ACDE067E94171D9E111510DDAE7BB042A；Web SHA-256 499BEAE9C8A05F59426449BB2A718B8538C2CBFDD22E7C90C57A5FFAFFD639D8。事件编辑截图 SHA-256 DCA309413275860CE8F1F74116292E2955233320FE93D8E36A1F6BADD7A6367B，UI hierarchy SHA-256 BC57BBAEA170F8B7DF506AAED2280C660FDC515338E80DF940AED800C82D92AC。Gradle 和仪器日志、运行时 JSON、截图均在 .local/android-test/reports/native095-raw-dualwing-20261106/manifest.md 所列目录。
+
+验收边界：这关闭的是原始 APK 同夹具双翼初始事件位置与独立横向滚动证据缺口，不代表整个 Timeline 或其它页面完成视觉/交互等价。标题折叠、全部事件种类与状态、recurrence、深色/大字体及其他 Native 页面继续维持各自状态；Product Cutover 仍 HOLD。实现提交 4194d513826e6104d85c4aadee23cfb066e2a45b。
