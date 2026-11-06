@@ -7,24 +7,37 @@ OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: f05a7e7a1eab8ebdf2cfd30db3a0390b574d8907 (Native event-editor shell surface color)
-LATEST_VERIFIED_HEAD: f05a7e7a1eab8ebdf2cfd30db3a0390b574d8907 (source boundaries, assembleDebug, lintDebug, package verification, Node syntax, Studio bridge E2E PASS; API 35 dense-month instrumentation 1/1 PASS before the final editor-footer-only CSS tweak; side-by-side original-APK/Web interaction and post-tweak editor shell measurement PASS; full Studio Python 86/89 with 3 source-shape failures; no full JVM run for this CSS-only slice)
+LATEST_CODE_HEAD: 1f1d8c2d2e92ec665d81dd215248532efca0e533 (Native 0.9.5 date-only Deadline timeline geometry, anchor, chip and drag)
+LATEST_VERIFIED_HEAD: 1f1d8c2d2e92ec665d81dd215248532efca0e533 (serial source boundaries, 976/976 JVM, assembleDebug, lintDebug, AndroidTest compile/package, default package/APK byte identity and Studio bridge E2E PASS; API 35 TimelineDragWebViewInstrumentedTest 3/3 PASS)
 CURRENT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
 TASK_STATUS: IN_PROGRESS
 PRODUCT_CUTOVER: HOLD
 TASK_BASE_HEAD: e41246d7ebe5b329adbdc657bd3e53735695efa1
-WORKING_APK_SHA256: B9D7105231CE8ECEBAE2A83E6701E4F46D0425180518B0470BAFD465719CA0EF
-WORKING_DEFAULT_SKIN_SHA256: 1A5C89E0A0CFA8AD30A7CEDFF28C2B382FF3962A78DF47AA00BA746E9D552918
+WORKING_APK_SHA256: F2F4CBC14737437155E7CB373391CC94D44DAD27892FC788BABFB262ABBA4361
+WORKING_DEFAULT_SKIN_SHA256: 37B3C2FBECE928F547191B759BCC8DAEFB792799233506F8EAE861036BB49BF6
 WORKING_DEFAULT_SKIN_ID: powercal-clear-default
 NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; implementation and full parity remain IN PROGRESS)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
-LAST_COMPLETED_TASK: Native 0.9.5 parity narrow slices: dense Month ordering/title wrapping/tap and event-editor outer geometry/surface (all narrow; Month/editor remain PARTIAL)
-LAST_COMPLETED_COMMIT: f05a7e7a1eab8ebdf2cfd30db3a0390b574d8907 (editor footer surface; preceding evidence/test commits b578c52e88e65ba5eee7c4e9946c6907e3c303e8 and 668bf33f21eaef757bc362f88282a8ed65404685)
+LAST_COMPLETED_TASK: Native 0.9.5 Timeline date-only Deadline true-time geometry, 23:59 point, chip and drag (narrow PASS; Timeline remains PARTIAL)
+LAST_COMPLETED_COMMIT: 1f1d8c2d2e92ec665d81dd215248532efca0e533
 LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; see audit and latest Android evidence)
-LAST_ATTEMPTED_COMMIT: f05a7e7a1eab8ebdf2cfd30db3a0390b574d8907 (dense agenda instrumentation and event-editor outer shell)
+LAST_ATTEMPTED_COMMIT: 1f1d8c2d2e92ec665d81dd215248532efca0e533 (date-only Deadline geometry and drag)
 NEXT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
-NEXT_ACTION: Continue the finite page-by-page migration against the frozen 0.9.5-rc.1 APK. Next compare Timeline true-time geometry, dual wings, outside titles, and greedy title folding on identical multi-event data; then continue the event-editor internal component layout. Dense Month behavior and editor shell are narrow PASS only. Month/editor and full Native parity remain PARTIAL/IN_PROGRESS; Product Cutover remains HOLD.
+NEXT_ACTION: Continue the finite page-by-page migration against the frozen 0.9.5-rc.1 APK. Next compare Timeline dual-wing behavior, outside-title placement and greedy title folding using identical multi-event data, then continue the event-editor internal component layout. Date-only Deadline geometry/drag, dense Month behavior and editor shell are narrow slices only; Timeline, Month, editor and full Native parity remain PARTIAL/IN_PROGRESS. Product Cutover remains HOLD.
 LAST_TASK_EVIDENCE:
+  NATIVE_095_TIMELINE_DATE_DEADLINE:
+    status: PASS (date-only Deadline geometry, 23:59 anchor, flag chip, accessible date precision, Host drag and read-only point tap; Timeline overall remains PARTIAL)
+    source_baseline: b1f7629f0c52812e1887443872f43aa6c49908c4
+    original_apk_sha256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
+    commit: 1f1d8c2d2e92ec665d81dd215248532efca0e533
+    current_apk_sha256: F2F4CBC14737437155E7CB373391CC94D44DAD27892FC788BABFB262ABBA4361
+    current_skin_sha256: 37B3C2FBECE928F547191B759BCC8DAEFB792799233506F8EAE861036BB49BF6
+    tests: full serial Gradle gate PASS; 976/976 JVM, 0 failures/errors/skips; boundaries, assemble, lint, AndroidTest compile/package PASS; Studio bridge E2E PASS; targeted Android TimelineDragWebViewInstrumentedTest 3/3 PASS; package verifier PASS
+    android: isolated API 35 AVD PowerCal_Native095_Original_20261105 / emulator-5554, 1080x2400, 420dpi, GMT, WebView 124.0.6367.219; same-fixture Native/Web interaction, Web DOM geometry against Core/Host time anchors, date point tap, date-chip drag, and Store invariants verified
+    geometry: Activity true-time top/height and Deadline `visualAxisMillis` point within 1.5 CSS px; chip starts at 16 CSS px and matches Native tertiary colors; date-only accessibility text has no clock time
+    screenshots: original frozen APK `.local/android-test/reports/native095-timeline-20261106/native-timeline-nov15.png` SHA `1DA4516BF4CFF4D1A297F53D220613A902BA03D0C4243A0CAFADEE0223D002A9`; Web `.local/android-test/reports/native095-timeline-fix-20261106/clear-date-deadline.png` SHA `BCDD33726E881EB30316E961F3BA3DEB52744E9636DE8AC0FD74B6A92E50795C`
+    evidence: `.local/android-test/reports/native095-timeline-fix-20261106/manifest.md`; issue `docs/issues/PC-ISSUE-SEPARATION-NATIVE-TIMELINE-DATE-DEADLINE-20261106.md`
+    limitations: screenshot fixtures have different event/date sets; dual wings, outside titles, greedy folding, dark/font/accessibility states and full Timeline parity remain open; Product Cutover HOLD
   NATIVE_095_DENSE_MONTH_AND_EVENT_EDITOR_SHELL:
     status: PARTIAL (dense Month ordering/title wrapping/tap and editor outer shell geometry/surface are narrow PASS; no page is fully signed off)
     source_baseline: b1f7629f0c52812e1887443872f43aa6c49908c4

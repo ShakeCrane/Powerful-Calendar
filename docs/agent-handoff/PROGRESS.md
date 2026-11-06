@@ -1,3 +1,13 @@
+## 2026-11-06 Timeline 日期级 Deadline 几何与拖动（窄切片 PASS）
+
+- **基准：**Owner 冻结 Native 0.9.5-rc.1 源码 `b1f7629f0c52812e1887443872f43aa6c49908c4`；原始 APK SHA-256 `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`。默认目标仍为唯一 `powercal-clear-default`，Native 保留恢复通道，Product Cutover `HOLD`。
+- **改动：**`renderTimeline()` 在日期条进入可见布局后再读取时间轴高度；日期级 Deadline 同时显示 Native 风格旗标芯片和 Core 视觉锚点上的 23:59 轴点；无障碍文本保留“无具体时刻”。芯片使用 `touch-action:pan-x` 解决 WebView 长按时系统派发 `pointercancel/touchcancel` 导致 Host 拖动未执行的问题。
+- **验证：**完整串行 Gradle 门禁 PASS，JUnit 976/976、0 failures/errors/skips；APK 组装、Lint、源码边界、AndroidTest 编译/打包 PASS；Studio bridge Browser E2E 和 Node 检查 PASS；API 35 AVD `PowerCal_Native095_Original_20261105`（最终串行 `emulator-5554`，WebView 124.0.6367.219）上的 `TimelineDragWebViewInstrumentedTest` 整类 3/3 PASS。测试覆盖活动真时几何、Deadline 23:59 锚点、芯片颜色/图标/边距、可访问日期精度、日期点只读打开、日期条 Host 拖动生成草稿且正式记录/计数不变。
+- **包与证据：**Debug APK SHA `F2F4CBC14737437155E7CB373391CC94D44DAD27892FC788BABFB262ABBA4361`；单一 `.pcskin` 源码/APK SHA 同为 `37B3C2FBECE928F547191B759BCC8DAEFB792799233506F8EAE861036BB49BF6`。日志/同夹具 Native-Web PixelCopy 在 `.local/android-test/reports/native095-timeline-fix-20261106/manifest.md`；问题记录 `docs/issues/PC-ISSUE-SEPARATION-NATIVE-TIMELINE-DATE-DEADLINE-20261106.md`。
+- **范围：**本次只签核日期级 Deadline 窄切片，不代表 Timeline 整页一致。截图 Native 原始 APK 与 Web 仪器样例使用不同事件日期/集合；不声称像素逐点等价。一次早期 Gradle connected 测试误自动选中两个 AVD 并卸载了冻结参考 AVD 中的测试应用；之后已重装哈希确认的原始 APK、恢复合成夹具，且所有后续测试都显式指定 ADB 序列。未涉及真机或真实用户数据。
+- **提交：**`1f1d8c2d2e92ec665d81dd215248532efca0e533` (`fix(parity): 对齐原生日期截止时间轴表现`)。
+- **下一动作：**对照冻结 APK 与 Web Runtime 验证双翼水平滚动、框外标题和贪心折叠；再继续编辑器内部组件。Month、编辑器及完整 Native parity 仍为 `PARTIAL/IN_PROGRESS`，Cutover `HOLD`。
+
 # Native 0.9.5 视觉/交互基准迁移续接（2026-11-05）
 
 ## 2026-11-06 原始 APK 全页差异审计后的窄切片
