@@ -729,3 +729,14 @@ AI 输入/历史长度、编辑器布局、跨状态相机、其他 Native 页�
 原始 APK 与已安装 `base.apk` SHA-256 均为 `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`；Web debug APK SHA-256 `39A89C98A0789963EFABCD8DC13106D55859ADCBB24378B10D11920ACA91D634`；默认包 SHA-256 `7AA3700A0D1E1CE1F19943CE012595E55A933B8D75FBFDBE306987537CDFE3EC`，资源中仍只有一个 `.pcskin`。全量 JVM 982/982、源码边界、assemble、Lint、AndroidTest 编译均 PASS；设备定向用例 1/1 PASS。
 
 留存差异：原始 APK 的单一上缘触点与 Web instrumentation 的双边缘触点使用不同的隔离测试数据/相机位置，因此这组材料证明行为可达性，不是完整的同像素 A/B 比较。截图与精确命令在 ignored `.local` 报告中；全 Timeline、框外标题、密集事件及其他 Native 页面仍为 `PARTIAL`。
+
+## 2026-11-06 点位目标同夹具几何与边界触控复测
+
+本节复测的是可视窗内一个 12:00 DEADLINE 的目标矩形，不提升 Timeline 或全页面状态。冻结源 `b1f7629f0c52812e1887443872f43aa6c49908c4` 的 `TimelineScreen.kt` 仍规定 84dp lane / 56dp point hit target；默认 `.pcskin` 未调整。
+
+- 在 `PowerCal_Wave2_QA35_20261104` / `emulator-5556`（API 35、1080×2400、420dpi、GMT、WebView 124.0.6367.219）中，Android instrumentation 用两个隔离 Store 构造同日期、同标题、同 revision 的单一 DEADLINE；Native Compose 与 Web v3 同用 24 小时 Today Camera。Native 矩形 `[267,1112]-[488,1259]`；Web DOM 为 84×56 CSS px，换算物理矩形 `[267.6283,1111.8183]-[487.8225,1258.7352]`。四边差均不超过 1.5 physical px。
+- WebView 实际触控在右边界内样点 `x=487` 打开同一事件，在外样点 `x=489` 不打开。两个样点均保持 Store `(drafts=0, commits=1, identities=1)`。最终测试 `TimelineDragWebViewInstrumentedTest#nativeAndClearVisibleDeadlineHitBoundsMatchAndRespectEdges` 为 1/1 PASS。
+- 原始 APK AVD `PowerCal_Native095_RawFixture_20261106` / `emulator-5590` 上，现有 `#0012` 的真实 ADB 点击 `x=476`、`x=487` 打开编辑器，`x=489` 不打开；返回后无保存或删除。只读 SQLite 确认 `event_seq=12`、revision 1、DEADLINE、`retired=0`；没有清除或卸载应用。
+- 一次 uiautomator dump 报告 raw 节点框 `[267,1112]-[477,1259]`，比实测点击可达范围窄；因此把无障碍节点矩形与实际触控样点分开记录，不据节点宽度缩小 Skin。该边界试验是整数坐标采样，不声称亚像素完全相同。
+- 配对截图：`.local/android-test/reports/native095-point-bounds-20261106/screenshots/native-final.png` SHA-256 `A14609598EACB02A554915607E7071375BB74961B0BE2FEBF1FCAAAEFD448255`；`web-final.png` SHA-256 `916AF5075E3A55E4010D56978F601440438F90C9AC9DED39BF656732407F812A`。原始 APK 仍以早前同事件可见截图作为视觉参照；本次 raw tap 与当前 Native/Web 测试未构成同一完整数据库的三方像素比较。
+- 报告、raw hierarchy、触控快照及最终 Gradle/JUnit 结果见 `.local/android-test/reports/native095-point-bounds-20261106/manifest.md`。本次只新增 AndroidTest，不改产品行为。全 Timeline、空/忙/锁定态、多泳道与其余页面继续 `PARTIAL`；Product Cutover `HOLD`。

@@ -39,3 +39,11 @@ Native 会保留锚点在可视时间窗外 80px 以内的点事件，使其热�
 - 最终串行 Gradle 门禁 PASS：982/982 JVM、0 failures/errors/skips，两个源码边界、APK、Lint 与 AndroidTest Kotlin 编译通过。APK SHA-256 `39A89C98A0789963EFABCD8DC13106D55859ADCBB24378B10D11920ACA91D634`；唯一默认包 10 个文件、411738 bytes，源码和 APK 内包 SHA-256 均为 `7AA3700A0D1E1CE1F19943CE012595E55A933B8D75FBFDBE306987537CDFE3EC`。
 
 此补充证明边缘点位命中这一窄切片，不证明整个 Timeline、其他页面或全产品视觉等价。Web 与 Native 语义框具体尺寸差异、标题/框外布局、其余页面状态仍需逐项记录；Product Cutover 继续 HOLD。
+
+## 2026-11-06 补充：可视窗内目标框与 raw 边缘触控
+
+此前“Web 语义框宽 13px、高 6px”的测量使用不同相机和未配对的语义矩形。本次使用同日期、同标题、同 revision 的单一 12:00 DEADLINE 和相同 Today Camera 配对测量当前 Native Compose 与 Web v3：Native `[267,1112]-[488,1259]`；Web `[267.6283,1111.8183]-[487.8225,1258.7352]`，四边差不超过 1.5 physical px。Web DOM 仍为冻结目标 84×56；没有 CSS 调整。
+
+在新版 WebView 的真实触控中，右边界内样点 x=487 打开事件，x=489 不打开。冻结原始 APK 的现有 `#0012` 也在 x=476、487 打开，在 x=489 不打开；没有 Save/Delete，SQLite 只读确认记录仍存在且未 retire。uiautomator 对 raw 节点曾报告较窄的 `[267,1112]-[477,1259]`；该可访问性边界与实触控范围不一致，故不据此缩小产品触控区。
+
+最终测试 `TimelineDragWebViewInstrumentedTest#nativeAndClearVisibleDeadlineHitBoundsMatchAndRespectEdges`：1/1 Android instrumentation PASS。精确坐标、截图哈希、JUnit XML 和重试记录见 `.local/android-test/reports/native095-point-bounds-20261106/manifest.md`。本结果只关闭一个可视窗内 Deadline 目标框切片，不关闭 Timeline 整页；Product Cutover 仍 HOLD。

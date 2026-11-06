@@ -2804,3 +2804,9 @@ API 35 emulator-5570 真实触控 Native Compose 与打包 Clear WebView 的无 
 - 最终完整串行 Gradle 门禁 977/977 JVM，0 failures/errors/skips；源边界、assemble、lint、AndroidTest compile/package PASS。Native 与 Web 隔离 API 35 instrumented tests 各 1/1 PASS，Default distribution 2/2、Node syntax 和 package verifier PASS。
 - Native/Web Store 均为 drafts=0、commits=8、identities=8。唯一 `.pcskin` 10 files / 410943 bytes，SHA-256 `95526F9DF0C1524790E48EFF3ECDCA6F6848C078BBD34825D2FC2463D0E9D58E`；APK SHA-256 `AA7D061C7EE412BBF368E33B237869539E076992FEE7A8D3A7E79E3CAB79CD5D`。实现提交 `75a3510c5affa18c08dbb0d23482496d0240453d`。
 - 证据 `.local/android-test/reports/native095-alarm-point-title-20261106/`；独立 Issue `docs/issues/PC-ISSUE-SEPARATION-NATIVE-TIMELINE-POINT-TITLE-20261106.md`。DEADLINE 虽已采用对应色值与位置换算，本轮未做设备对照；深色/大字体/recurrence 和其它页面同样未签核。Native recovery 维持，Product Cutover HOLD。
+
+## Native 0.9.5 Deadline 点位框体和实触控边界复核（2026-11-06）
+
+- 窄切片 PASS：同日期/时区/12:00 Deadline 的 Native Compose 与 Web v3 配对 instrumentation，矩形四边最大误差 <1px；84×56 CSS 目标与冻结 Native 84dp×56dp 一致。API 35 WebView 实触摸边界样点 x=487 命中、x=489 未命中；raw 0.9.5 APK 对应样点结果相同。
+- Raw uiautomator 报告的节点矩形较窄，但 raw 实际点击仍命中 x=487；该节点数据作为单独的无障碍矩形保留，不据此缩小 Web 目标。事件未保存/删除，隔离 Store 计数不变。Full Timeline 及全页面 parity 继续 PARTIAL，Product Cutover HOLD。
+- 目标 Android instrumentation `nativeAndClearVisibleDeadlineHitBoundsMatchAndRespectEdges` 为 1/1 PASS。仅改动测试，不改产品代码/默认包；代码提交 `206a2bb9`。截图、SHA、边界 dump 与日志见 `.local/android-test/reports/native095-point-bounds-20261106/manifest.md`。

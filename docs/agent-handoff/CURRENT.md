@@ -7,8 +7,8 @@ OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: 7858ee357714a29fba955d9acf7b36715ba22c47 (bounded Host edge candidates and 80 physical-pixel point clipping; narrow raw APK/WebView edge interaction verified; full parity remains IN PROGRESS)
-LATEST_VERIFIED_HEAD: 7858ee357714a29fba955d9acf7b36715ba22c47 (serial full Gradle gate 982/982 JVM, source boundaries, assembleDebug, lintDebug, AndroidTest compile PASS; raw frozen APK upper-edge Deadline tap and WebView dual-edge instrumentation 1/1 PASS; default package source/APK SHA verified)
+LATEST_CODE_HEAD: 206a2bb9 (adds same-fixture Native Compose/Web point-target geometry and edge-touch instrumentation; no product code or default skin change)
+LATEST_VERIFIED_HEAD: 206a2bb9 (targeted API 35 Android instrumentation 1/1 PASS; previous full serial Gradle gate remains at 7858ee357714a29fba955d9acf7b36715ba22c47, not rerun for this test-only slice)
 CURRENT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
 TASK_STATUS: IN_PROGRESS
 PRODUCT_CUTOVER: HOLD
@@ -18,12 +18,12 @@ WORKING_DEFAULT_SKIN_SHA256: 7AA3700A0D1E1CE1F19943CE012595E55A933B8D75FBFDBE306
 WORKING_DEFAULT_SKIN_ID: powercal-clear-default
 NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; implementation and full parity remain IN PROGRESS)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
-LAST_COMPLETED_TASK: Native 0.9.5 Timeline timed-point viewport-edge hit slivers (narrow PASS; full Timeline remains PARTIAL)
-LAST_COMPLETED_COMMIT: 7858ee357714a29fba955d9acf7b36715ba22c47
+LAST_COMPLETED_TASK: Native 0.9.5 in-view Deadline point-target bounds and edge samples (narrow PASS; full Timeline remains PARTIAL)
+LAST_COMPLETED_COMMIT: 206a2bb9
 LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; see audit and latest Android evidence)
-LAST_ATTEMPTED_COMMIT: 7858ee357714a29fba955d9acf7b36715ba22c47 (timed-point edge slice; broader parity task remains IN_PROGRESS)
+LAST_ATTEMPTED_COMMIT: 206a2bb9 (test-only geometry slice; broader parity task remains IN_PROGRESS)
 NEXT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
-NEXT_ACTION: Measure and close the remaining in-viewport point-target bounds delta using the same event fixture, date, timezone and camera in raw 0.9.5 APK and WebView: prior measured Native bounds `[267,1112]-[477,1259]`, Web bounds `[267,1109]-[490,1262]`. Capture fresh screenshots, Compose/DOM geometry and real taps before changing CSS/viewport mapping; preserve the 56dp directional target and the verified 80px edge clipping. Then continue the next measured Native/Web state difference from the whole-page audit. Timeline and all-page parity remain PARTIAL; Product Cutover remains HOLD.
+NEXT_ACTION: Resolve the audited AI composer input-cap discrepancy. Compare frozen Native `AiChatScreen` (6000 chars) with Web input (4000 chars), inspect the formal Host/Core request limit before changing UI, then add boundary tests and a real WebView input check if the existing contract allows 6000. Do not change AI business/API limits without evidence. Afterward continue the finite page-difference audit; no page is fully signed off and Product Cutover remains HOLD.
 LAST_TASK_EVIDENCE:
   NATIVE_095_EDGE_POINT_HIT_SLICES:
     status: PASS (bounded edge slivers and actual click reachability only; Timeline remains PARTIAL)
@@ -37,6 +37,17 @@ LAST_TASK_EVIDENCE:
     current_skin_sha256: 7AA3700A0D1E1CE1F19943CE012595E55A933B8D75FBFDBE306987537CDFE3EC (10 files, one package, source/APK identical)
     evidence: .local/android-test/reports/native095-edge-points-20261106/manifest.md; docs/issues/PC-ISSUE-SEPARATION-NATIVE-TIMED-POINT-HITBOX-20261106.md; audit docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md
     limits: different isolated fixture/camera positions, so this proves frozen edge behavior and Web touch reachability, not whole-page pixel equality; no Core or Store code changed; Product Cutover HOLD
+  NATIVE_095_VISIBLE_POINT_BOUNDS:
+    status: PASS (paired current Native Compose/Web geometry within 1.5px and raw/Web integer edge samples agree; Timeline remains PARTIAL)
+    source_baseline: b1f7629f0c52812e1887443872f43aa6c49908c4
+    code_commit: 206a2bb9
+    android: PowerCal_Native095_RawFixture_20261106/emulator-5590 and PowerCal_Wave2_QA35_20261104/emulator-5556; API 35, 1080x2400, 420dpi, GMT; WebView 124.0.6367.219
+    geometry: Native Compose [267,1112]-[488,1259]; Web physical [267.6283,1111.8183]-[487.8225,1258.7352]; CSS 84x56; maximum edge delta <1px
+    touch: raw and Web x=487 opens #0012/fixture Deadline; x=489 does not; Native/Web isolated Store counts unchanged
+    tests: connectedDebugAndroidTest 1/1 PASS, 0 failures/errors/skips; targeted test compiled the AndroidTest APK; no full JVM gate rerun in this test-only slice
+    screenshots: raw reference native095-edge-initial.png 2F41FF202CED96D037CFD7784D6854F6B45D2CCC0927551D9422B1ED03CE2649; Native A14609598EACB02A554915607E7071375BB74961B0BE2FEBF1FCAAAEFD448255; Web 916AF5075E3A55E4010D56978F601440438F90C9AC9DED39BF656732407F812A
+    evidence: .local/android-test/reports/native095-point-bounds-20261106/manifest.md; updated audit and issue PC-ISSUE-SEPARATION-NATIVE-TIMED-POINT-HITBOX-20261106
+    limits: raw uiautomator node bound is 210px wide while observed taps reach x=487; do not equate accessibility bounds with hit reach; no subpixel/raw-vs-Web full screenshot parity claimed
   NATIVE_095_ALARM_POINT_TITLE:
     status: PASS (ALARM title typography, type color and title-box geometry only; Timeline remains PARTIAL)
     source_baseline: b1f7629f0c52812e1887443872f43aa6c49908c4
@@ -691,7 +702,7 @@ LATEST_VERIFIED_EVIDENCE:
     behavior: exact same timed Deadline title/date/time; both visible-title taps opened that Deadline editor; no Save action was issued. Raw target [267,1112]-[477,1259]; Web after fix [267,1109]-[490,1262]. Pixel ink bbox Native (278,1210)-(459,1233), Web (279,1209)-(463,1232); point line Native (267,1254)-(487,1258), Web (268,1257)-(488,1259)
     evidence: .local/android-test/reports/native095-deadline-title-20261106/manifest.md; docs/issues/PC-ISSUE-SEPARATION-NATIVE-TIMED-POINT-HITBOX-20261106.md; docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md
     limitation: Native retains point events within an 80px viewport margin; Web host/runtime still omits events outside exact visibleStart/visibleEnd. Web accessibility target is 6px taller and 13px wider in this AVD. Timeline/full-surface parity remains PARTIAL; Product Cutover HOLD
-BLOCKERS: Whole-surface Native-to-Web parity remains incomplete. Web currently omits timed point events whose hit areas partially overlap the viewport from outside the time window. Month, Memo, editor geometry, AI history/input, other Native page/component comparisons, and TalkBack remain open. Studio Python suite has three unrelated route/recovery source-shape failures; full browser E2E has a pre-Timeline palette assertion failure. Forced checkpoint-I/O failure, physical/OEM reminder delivery and live AI provider reliability remain NOT TESTED. Product Cutover remains HOLD.
+BLOCKERS: Whole-surface Native-to-Web parity remains incomplete. The bounded viewport-edge point candidates are implemented; remaining Timeline states include dense/multilane, locked, empty and broader accessibility behavior. Month, Memo (including the Web-only load-more control), editor/Draft Deck geometry, AI composer/history (including 6000-vs-4000 input limit), Settings routes and full page state comparisons remain open. Studio Python suite has three unrelated route/recovery source-shape failures; full browser E2E has a pre-Timeline palette assertion failure. Forced checkpoint-I/O failure, physical/OEM reminder delivery and live AI provider reliability remain NOT TESTED. Product Cutover remains HOLD.
 
 AUTHORITATIVE_PLAN: docs/POWERCAL_SINGLE_DEFAULT_SKIN_EXECUTION_PLAN_2026-11-03_R2.md
 ACCEPTANCE_MATRIX: docs/agent-handoff/SINGLE_SKIN_ACCEPTANCE.md
