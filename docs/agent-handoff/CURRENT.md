@@ -7,8 +7,8 @@ OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: 14994ff0774ed360afb8ad3c5dafe1ee4aaee890 (baseline for the current AI bubble/role-label parity slice; implementation commit pending)
-LATEST_VERIFIED_HEAD: 14994ff0774ed360afb8ad3c5dafe1ee4aaee890 plus current working-tree slice (serial Gradle gate 987/987 JVM PASS; boundaries, assembleDebug, lintDebug and AndroidTest compile PASS; API 35 screenshot and targeted WebView test PASS)
+LATEST_CODE_HEAD: 15a28bed4e43ad2b5120c22507c8315d65bb7b01 (Native 0.9.5 AI bubble/role-label narrow parity slice)
+LATEST_VERIFIED_HEAD: 15a28bed4e43ad2b5120c22507c8315d65bb7b01 (serial Gradle gate 987/987 JVM PASS; boundaries, assembleDebug, lintDebug and AndroidTest compile PASS; API 35 screenshot and targeted WebView test PASS)
 CURRENT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
 TASK_STATUS: IN_PROGRESS
 PRODUCT_CUTOVER: HOLD
@@ -19,9 +19,9 @@ WORKING_DEFAULT_SKIN_ID: powercal-clear-default
 NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; implementation and full parity remain IN PROGRESS)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
 LAST_COMPLETED_TASK: Native 0.9.5 AI message bubble/role-label appearance (narrow PASS; AI page remains PARTIAL)
-LAST_COMPLETED_COMMIT: implementation commit pending; see issue PC-ISSUE-SEPARATION-NATIVE-AI-BUBBLE-CHROME-20261107
+LAST_COMPLETED_COMMIT: 15a28bed4e43ad2b5120c22507c8315d65bb7b01
 LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; see audit and latest Android evidence)
-LAST_ATTEMPTED_COMMIT: 14994ff0774ed360afb8ad3c5dafe1ee4aaee890 (AI bubble parity working tree verified; broader Native visual parity remains IN_PROGRESS)
+LAST_ATTEMPTED_COMMIT: 15a28bed4e43ad2b5120c22507c8315d65bb7b01 (AI bubble parity slice verified; broader Native visual parity remains IN_PROGRESS)
 NEXT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
 NEXT_ACTION: Compare frozen Native and Web AI message-action menu geometry, typography and touch behavior on the same synthetic history; restrict Android execution explicitly to emulator-5556. Preserve Host-owned actions and verified history paging; AI page remains PARTIAL and Product Cutover HOLD.
 LAST_TASK_EVIDENCE:
