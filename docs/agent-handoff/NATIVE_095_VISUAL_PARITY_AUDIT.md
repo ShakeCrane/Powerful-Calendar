@@ -591,3 +591,39 @@ Raw/Web fixture Store 均为 drafts=0, commits=8, identities=8，无夹具外写
 3. 之后按同状态证据推进编辑器/Deck/确认表面及 AI 状态边界；Settings 仅对齐保留功能，绝不复刻已退役的皮肤目录。
 
 此审计不改变 Core/Host 业务语义、唯一默认包身份、Native 安全恢复、SSA 状态或 Product Cutover HOLD。静态字段差异可指导移植，但所有外观与交互结论仍需针对冻结原始 APK和新版 WebView 的实际截图/触控逐项签核。
+
+## Native 0.9.5 Memo 行元数据与触控（2026-11-06）
+
+**窄切片 PASS；Memo 页面与整体视觉/交互等价仍为 PARTIAL。** 本节补充并局部更新上方有限审计中 Memo 行“缺少类型/日期/重复/序号且未做原始 APK/Web 配对”的结论，不提升其它 Memo 功能或 SSA 状态。
+
+冻结源码 `b1f7629f0c52812e1887443872f43aa6c49908c4` 的 `app/src/main/java/dev/powerfulcalendar/ui/v2/MemoCenterScreen.kt::NativeMemoCenterScreen` 使用可点击行卡片打开对应记录；行内容包含标题、`owner.kind`、按 `owner.zone` 转为本地日期的文本、重复标记，以及四位序号。分离后的 Web 投影之前没有把 `kind`、`zoneId`、`repeating` 传入皮肤，`renderMemo()` 因此不能呈现同样元数据。
+
+本切片在 `WebSkinMemoProjection` 复用现有 Memo DTO 投影这些字段，不增 Core API、不改变 Host 权限或业务规则。Clear 以现有事件类型、Core 提供的时区、本地日期和重复状态渲染第二行元数据及序号。行点击会转发到原有 `openEvent` 正式动作；复选控件的 `toggleMemo` 仍由独立 action 处理。Native 风格 CSS 对齐了头部/筛选/列表位置、行填色、圆角、尺寸和标题/元数据排版。默认包通过正式 `tools/skin-studio/build_default_clear.py` 重建，没有编辑编译后的 ZIP。
+
+### 原始 APK 与 WebView 实测
+
+- 原始参考：`PowerCal-0.9.5-rc.1-b1f7629-debug-core-HOLD.apk`，SHA-256 `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`；未替换 APK。隔离 AVD `PowerCal_Native095_RawFixture_20261106` / `emulator-5590`，API 35、1080×2400、420 dpi。保留原八条 Timeline 夹具，只追加本测试三条 Memo 夹具；没有清除应用数据，退出前恢复系统日历引导偏好。
+- Web v3：`PowerCal_Wave2_QA35_20261104` / `emulator-5556`，API 35、1080×2400、420 dpi，System WebView `124.0.6367.219`。使用隔离临时 Store，测试结束关闭并删除该临时数据库。
+- 两端真实画面包含“备忘 · 2026-11-07”、无日期行、重复行标记及四位序号。Web 真实点击元数据区域打开正式编辑表面；Native 真实点击对应行打开编辑器。测试比较画面矩形，并断言打开/未修改关闭前后的 Store 计数和夹具记录快照一致。
+- Native 屏幕像素边界：整行 `[42,447]-[1038,615]`，标题 `[210,479]-[800,542]`，元数据 `[210,542]-[455,584]`，序号 `[929,510]-[1017,552]`。Web 以 WebView 实际窗口与视口缩放换算后的边缘偏差最大约 2.86 物理像素。抽样行底色两端均为 RGB `(246,248,252)`。
+- 触控仪器测试：`frozen095NativeMemoRowsUseFrozenMetadataAndOpenWithoutStoreWrites` 1/1 PASS；`currentWebV3MemoRowsUseFrozenMetadataAndOpenWithoutStoreWrites` 1/1 PASS。Gradle 门禁 977/977 JVM、0 failures/errors/skips；边界检查、Debug APK、Lint、AndroidTest 编译/组装通过。最新 KDoc-only 测试说明改动另行通过 AndroidTest Kotlin 编译。
+- `build_default_clear.py --verify --apk` PASS：正式资源内仅 `powercal-clear-default.pcskin` 一份、10 个条目、411435 bytes；源码包与 APK 资源 SHA-256 都是 `87D5A3892A83B8241FC59C5EA1012937F03ACF05659B9757099C00352F42B504`。Debug APK SHA-256 `E8C932F7D259F6EDFF601553895F37A26E55E52B980FEB871A0781A625FFB0B6`。分发测试 2/2、目标 JS 语法检查 PASS。
+- Skin Studio Python 全套本次实跑 86/89；三项既有 source-shape 断言失败：`test_full_route_registry_has_one_restore`、`test_privacy_editors_remain_host_owned_but_placeable`、`test_native_settings_and_hidden_activity_rescue_are_both_available`。它们匹配过时的路由常量/签名/源码路径；没有改动这些无关断言，也不将该套件报告为全通过。
+
+### 证据边界与继续项
+
+逐项证据、命令和日志在 `.local/android-test/reports/native095-memo-metadata-20261106/manifest.md`。Native/Web 最终截图分别为 `native-raw-memo-final.png`（SHA-256 `B1B6062129214CB48F2140CAAB5211015D4F568105235C3D7840D17AC8E66F31`）与 `web-v3-memo-final.png`（SHA-256 `8630F3DAAED4F42AE4CD6E534070239E7F32256ED256E3C924A73DD532914295`）。独立问题记录：`docs/issues/PC-ISSUE-SEPARATION-NATIVE-MEMO-METADATA-ROW-TOUCH-20261106.md`。
+
+本次只配对 MEMO 类型的元数据、行几何和打开/无修改关闭。完成/撤销、重复实例完成、>250 条分页、所有类别在 Memo 中的日期/类型样式、筛选和其它页面状态仍未由本切片验收。Native 恢复路径及 Core Store 语义未变。Product Cutover 仍 HOLD。下一项有限差异为 Month agenda 非网格区域的横向切月命中范围。
+
+## Month agenda 横向切月命中范围（2026-11-06 定向源码复核）
+
+**状态：差异已确认，设备验收 NOT TESTED，Month 页面继续 PARTIAL。**
+
+冻结基准 `b1f7629f0c52812e1887443872f43aa6c49908c4` 中，`app/src/main/java/dev/powerfulcalendar/ui/v2/MonthScreen.kt:64–85` 把 `pointerInput(monthText)` 与横向手势识别器放在 `LazyColumn.fillMaxSize()` 上。标题、“今天”、月份栏、月格、agenda 标题/事件行和页面底部动作都在可滚动列表中；年份/月选择弹窗在列表之后呈现，不属于该触摸面。拖动量严格超过 `72.dp` 才切月。
+
+当前 Web v3 `tools/skin-studio/default-clear/source/web/app.js:479–502` 只在 `#monthGrid` 记录 pointer 起点。agenda 和其他列表区起手不会切月。它用 `abs(dx) < 72` 作为拒绝条件，所以恰好 72 CSS px 会触发；冻结 Native 使用 `>72dp`。CSS px 与 Compose dp 的对应还受设备 density、WebView viewport scale 和触摸识别器仲裁影响，不能因为两个源码里有数字 72 就视为相等。Web 的一次性点击抑制当前也只覆盖月格；若扩到 agenda，成功横滑后的合成/抬手点击必须全页面抑制，避免事件卡被误打开。
+
+动作仍经 `browseMonth` → `WebSkinHost` 校验 → `PowerCalApp` 更新视图状态，不直接修改 Calendar Store。现有 `NativeClearMonthOccurrenceParityInstrumentedTest.nativeAndClearMonthGridSwipesNavigateOneMonthWithoutSelectingOrWriting` 只从 Web 月格触发；尚未验证页头、月份栏、agenda 标题/事件卡、页尾起手、严格阈值边缘、竖滑/斜滑仲裁或滑过卡片后不误开事件。此测试也不是冻结原始 APK 与 Web v3 的真实 APK 成对设备验收。
+
+下一步先实测屏幕 dp 与 Web CSS 坐标换算及原生阈值触发点，再决定最小实现。原始 APK 与 Web v3 应在隔离 API 35 AVD 上以同月份数据完成双向切月；同时检查选中日期、事件目标、Camera、纵向滚动及 Store 快照。此处只记录差异，不预先标记功能 PASS。Native 恢复和 Product Cutover HOLD 均不变。

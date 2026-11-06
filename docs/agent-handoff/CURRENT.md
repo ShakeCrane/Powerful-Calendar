@@ -7,23 +7,23 @@ OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: 75a3510c5affa18c08dbb0d23482496d0240453d (frozen raw APK and Web v3 ALARM point-title style; narrow parity slice)
-LATEST_VERIFIED_HEAD: 75a3510c5affa18c08dbb0d23482496d0240453d (serial boundaries, 977/977 JVM, assembleDebug, lintDebug, AndroidTest compile/package, raw Native/Web title and dual-wing instrumentation 2/2 PASS)
+LATEST_CODE_HEAD: f6183f3b7c76166bf65ed069494313b0e39ecb33 (Native 0.9.5 Memo row metadata, geometry, and Web row-touch affordance; narrow parity slice)
+LATEST_VERIFIED_HEAD: f6183f3b7c76166bf65ed069494313b0e39ecb33 (serial Gradle gate 977/977 JVM; boundaries, assembleDebug, lintDebug and AndroidTest compile/package PASS; raw Native/Web Memo instrumentation 2/2 PASS; current AndroidTest compile PASS)
 CURRENT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
 TASK_STATUS: IN_PROGRESS
 PRODUCT_CUTOVER: HOLD
 TASK_BASE_HEAD: e41246d7ebe5b329adbdc657bd3e53735695efa1
-WORKING_APK_SHA256: AA7D061C7EE412BBF368E33B237869539E076992FEE7A8D3A7E79E3CAB79CD5D
-WORKING_DEFAULT_SKIN_SHA256: 95526F9DF0C1524790E48EFF3ECDCA6F6848C078BBD34825D2FC2463D0E9D58E
+WORKING_APK_SHA256: E8C932F7D259F6EDFF601553895F37A26E55E52B980FEB871A0781A625FFB0B6
+WORKING_DEFAULT_SKIN_SHA256: 87D5A3892A83B8241FC59C5EA1012937F03ACF05659B9757099C00352F42B504
 WORKING_DEFAULT_SKIN_ID: powercal-clear-default
 NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; implementation and full parity remain IN PROGRESS)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
-LAST_COMPLETED_TASK: Native 0.9.5 frozen raw APK / Web v3 dual-wing initial view and ALARM point-title style (narrow PASS; full Timeline and overall parity remain PARTIAL)
-LAST_COMPLETED_COMMIT: 75a3510c5affa18c08dbb0d23482496d0240453d
+LAST_COMPLETED_TASK: Native 0.9.5 Memo row metadata, screen geometry, and Web row touch (narrow PASS; Memo page and overall parity remain PARTIAL)
+LAST_COMPLETED_COMMIT: f6183f3b7c76166bf65ed069494313b0e39ecb33
 LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; see audit and latest Android evidence)
-LAST_ATTEMPTED_COMMIT: 75a3510c5affa18c08dbb0d23482496d0240453d (raw APK/Web ALARM point-title alignment; parity task remains IN_PROGRESS)
+LAST_ATTEMPTED_COMMIT: f6183f3b7c76166bf65ed069494313b0e39ecb33 (Memo metadata and row-touch slice; broader parity task remains IN_PROGRESS)
 NEXT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
-NEXT_ACTION: Implement Native-equivalent Memo row metadata (kind, local date, repeat marker, sequence) from the existing MemoEntryV1 fields, then validate the same non-empty fixture with original APK and current WebView touch/screenshots. The cross-page audit is recorded in NATIVE_095_VISUAL_PARITY_AUDIT.md; next audit Month agenda swipe scope, then editor/deck and AI states. Keep page-wide status PARTIAL and Product Cutover HOLD.
+NEXT_ACTION: Close the finite Month swipe mismatch: frozen Native `MonthScreen.kt:64–85` recognizes horizontal swipes over the whole LazyColumn; current Web v3 `app.js:479–502` only records starts in `#monthGrid`, with 72 CSS px inclusive versus Native strictly more than 72 dp. Extend the Web gesture only if the measured CSS-to-dp and touch-arbitration evidence supports it; preserve vertical scroll, cancel handling, date selection, and suppress the click from the same swipe across the page so agenda cards cannot open accidentally. Compare page header, month area, agenda header/cards, and footer on the original APK and current WebView using verified isolated API 35 AVDs and the same fixture. The Memo metadata/row-touch slice is PASS, while the Memo, Month, Timeline pages and overall parity remain PARTIAL. Product Cutover remains HOLD.
 LAST_TASK_EVIDENCE:
   NATIVE_095_ALARM_POINT_TITLE:
     status: PASS (ALARM title typography, type color and title-box geometry only; Timeline remains PARTIAL)
@@ -631,7 +631,21 @@ LATEST_VERIFIED_EVIDENCE:
     screenshots: raw CF30CCD7CC76650802D6DF0778AE7D5ACDE067E94171D9E111510DDAE7BB042A; Web 499BEAE9C8A05F59426449BB2A718B8538C2CBFDD22E7C90C57A5FFAFFD639D8
     evidence: .local/android-test/reports/native095-raw-dualwing-20261106/manifest.md; docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md; docs/issues/PC-ISSUE-SEPARATION-NATIVE-TIMELINE-WINGS-20261106.md
     limitations: other Timeline states, recurrence, theme/font variants, and other pages remain unverified; physical/OEM parity remains untested
-BLOCKERS: Whole-surface Native-to-Web parity remains incomplete; multiple Timeline states and Native page/component comparisons remain. TalkBack focus order, forced checkpoint-I/O failure, physical/OEM reminder delivery and live AI provider reliability remain NOT TESTED. Studio Python was 86/89 in an earlier run (three named route/architecture source-literal failures) and was not rerun on this slice. Product Cutover remains HOLD.
+  NATIVE_095_MEMO_METADATA_ROW_TOUCH:
+    status: PASS (Memo row metadata, measured bounds/color, and metadata-area open; Memo page remains PARTIAL)
+    source_baseline: b1f7629f0c52812e1887443872f43aa6c49908c4
+    commit: f6183f3b7c76166bf65ed069494313b0e39ecb33
+    tests: serial Gradle full gate PASS; 977/977 JVM, 0 failures/errors/skips; boundaries, assembleDebug, lint, AndroidTest compile/package PASS; raw Native and Web v3 instrumentation 1/1 each PASS; AndroidTest recompile after KDoc-only change PASS; distribution tests 2/2 and Node syntax PASS; package verifier PASS
+    studio_python: 86/89; three existing route/recovery source-shape assertions fail against the current architecture; not claimed PASS
+    apk_sha256: E8C932F7D259F6EDFF601553895F37A26E55E52B980FEB871A0781A625FFB0B6
+    default_skin_sha256: 87D5A3892A83B8241FC59C5EA1012937F03ACF05659B9757099C00352F42B504 (10 entries; only factory .pcskin; source/APK byte-identical)
+    android: raw frozen APK AVD PowerCal_Native095_RawFixture_20261106/emulator-5590; current Web v3 AVD PowerCal_Wave2_QA35_20261104/emulator-5556; both API 35, 1080x2400, 420dpi; WebView 124.0.6367.219
+    geometry: Native row [42,447]-[1038,615], title [210,479]-[800,542], metadata [210,542]-[455,584], sequence [929,510]-[1017,552]; Web physical edges within 2.86px maximum; sampled row fill RGB(246,248,252) on both
+    store: Native counts remained drafts=1/commits=11/identities=11; Web isolated Store remained drafts=0/commits=3/identities=3; fixture records unchanged before/after open and untouched close
+    screenshots: Native B1B6062129214CB48F2140CAAB5211015D4F568105235C3D7840D17AC8E66F31; Web 8630F3DAAED4F42AE4CD6E534070239E7F32256ED256E3C924A73DD532914295
+    evidence: .local/android-test/reports/native095-memo-metadata-20261106/manifest.md; docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md; docs/issues/PC-ISSUE-SEPARATION-NATIVE-MEMO-METADATA-ROW-TOUCH-20261106.md
+    limitations: only MEMO rows and opening an untouched row are paired; completion toggles, >250 paging, other kinds, full Memo states, and non-Memo pages remain unverified; Product Cutover HOLD
+BLOCKERS: Whole-surface Native-to-Web parity remains incomplete; multiple Timeline states and Native page/component comparisons remain. TalkBack focus order, forced checkpoint-I/O failure, physical/OEM reminder delivery and live AI provider reliability remain NOT TESTED. The Studio Python suite was 86/89: three existing route/recovery source-shape assertions fail against current architecture. Product Cutover remains HOLD.
 
 AUTHORITATIVE_PLAN: docs/POWERCAL_SINGLE_DEFAULT_SKIN_EXECUTION_PLAN_2026-11-03_R2.md
 ACCEPTANCE_MATRIX: docs/agent-handoff/SINGLE_SKIN_ACCEPTANCE.md
