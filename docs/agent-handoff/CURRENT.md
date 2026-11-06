@@ -1,29 +1,48 @@
 PROJECT: Powerful-Calendar
 PLAN: PLAN-2026-11-03-R2
 BRANCH: codex/skin-single-default-closure
+# Canonical current fields are the top-level values here; nested handoff entries are historical evidence snapshots, not runnable NEXT_ACTION instructions.
 OWNER_VISUAL_BASELINE: frozen native PowerCal 0.9.5-rc.1 (2026-10-27); supersedes current Clear appearance and unapproved Claude concepts
 OWNER_VISUAL_SOURCE_SHA: b1f7629f0c52812e1887443872f43aa6c49908c4
 OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0.9.5-rc.1-b1f7629-debug-core-HOLD.apk
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: 15a28bed4e43ad2b5120c22507c8315d65bb7b01 (Native 0.9.5 AI bubble/role-label narrow parity slice)
-LATEST_VERIFIED_HEAD: 15a28bed4e43ad2b5120c22507c8315d65bb7b01 (serial Gradle gate 987/987 JVM PASS; boundaries, assembleDebug, lintDebug and AndroidTest compile PASS; API 35 screenshot and targeted WebView test PASS)
+LATEST_CODE_HEAD: 141d18ca8f50cadeaef3b7ddb920ec51e827b720 (Native 0.9.5 AI action-menu narrow parity slice)
+LATEST_VERIFIED_HEAD: 141d18ca8f50cadeaef3b7ddb920ec51e827b720 (serial Gradle gate PASS; 987 JVM XML results with zero failures/errors/skips; targeted API 35 WebView test 1/1 PASS)
 CURRENT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
 TASK_STATUS: IN_PROGRESS
 PRODUCT_CUTOVER: HOLD
-TASK_BASE_HEAD: 14994ff0774ed360afb8ad3c5dafe1ee4aaee890
-WORKING_APK_SHA256: 42edab078121d1ca69c80cf828b7406af868d04214baacb610276c1edfc7b849
-WORKING_DEFAULT_SKIN_SHA256: ee2bc91820f6222f4ed820f35befada7e97b48a43dbc144496f610cc673ce0c8
+TASK_BASE_HEAD: e129d2defa4af5fe30c7729402cd5d04d35b3370
+WORKING_APK_SHA256: F3EB40CA90C732137F820C4F8843217C990AC9672F6843EC68F3D1EDDE5105D7
+WORKING_DEFAULT_SKIN_SHA256: 1B05DA65418D5C0C24273F369C54B95EE59D1DCC0CFBA32A3FFD6E80D5478F11
 WORKING_DEFAULT_SKIN_ID: powercal-clear-default
 NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; implementation and full parity remain IN PROGRESS)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
-LAST_COMPLETED_TASK: Native 0.9.5 AI message bubble/role-label appearance (narrow PASS; AI page remains PARTIAL)
-LAST_COMPLETED_COMMIT: 15a28bed4e43ad2b5120c22507c8315d65bb7b01
+LAST_COMPLETED_TASK: Native 0.9.5 AI message-action menu geometry/style/touch (narrow PASS; AI page remains PARTIAL)
+LAST_COMPLETED_COMMIT: 141d18ca8f50cadeaef3b7ddb920ec51e827b720
 LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; see audit and latest Android evidence)
-LAST_ATTEMPTED_COMMIT: 15a28bed4e43ad2b5120c22507c8315d65bb7b01 (AI bubble parity slice verified; broader Native visual parity remains IN_PROGRESS)
+LAST_ATTEMPTED_COMMIT: 141d18ca8f50cadeaef3b7ddb920ec51e827b720 (AI action menu verified; broader Native visual parity remains IN_PROGRESS)
 NEXT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
-NEXT_ACTION: Compare frozen Native and Web AI message-action menu geometry, typography and touch behavior on the same synthetic history; restrict Android execution explicitly to emulator-5556. Preserve Host-owned actions and verified history paging; AI page remains PARTIAL and Product Cutover HOLD.
+NEXT_ACTION: Remove the ordinary Web Settings route to NativeToolsPage only after confirming its Web/Host replacements; keep MainActivity nativeRecoverySignal as the independent recovery entry. Add tests that ordinary Skin actions cannot open NativeToolsPage and that recovery remains reachable; perform the route test on an identity-verified isolated API 35 AVD. The Settings route audit is static; visual/touch equivalence remains NOT TESTED.
+LATEST_SLICE_EVIDENCE:
+  NATIVE_095_AI_MESSAGE_MENU:
+    status: NARROW PASS (user menu screenshot geometry/style; user and assistant DOM/menu assertions; full AI page remains PARTIAL)
+    source_baseline: b1f7629f0c52812e1887443872f43aa6c49908c4
+    code_commit: 141d18ca8f50cadeaef3b7ddb920ec51e827b720
+    raw_apk_sha256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
+    current_apk_sha256: F3EB40CA90C732137F820C4F8843217C990AC9672F6843EC68F3D1EDDE5105D7
+    default_skin_sha256: 1B05DA65418D5C0C24273F369C54B95EE59D1DCC0CFBA32A3FFD6E80D5478F11 (one package; source/APK bytes identical)
+    android: PowerCal_Native095_MenuReference_20261107/emulator-5560 and PowerCal_Wave2_QA35_20261104/emulator-5556; both API 35, 1080x2400, 420dpi; WebView 124.0.6367.219
+    tests: Gradle serial gate PASS; 987 JVM tests/zero failures-errors-skips; target WebView instrumentation 1/1; Node syntax PASS; distribution Python 2/2; package verifier PASS
+    evidence: .local/android-test/reports/native095-ai-menu-20261107/manifest.md; docs/issues/PC-ISSUE-SEPARATION-NATIVE-AI-MENU-20261107.md
+    residuals: menu near viewport edge, separate Native screenshot of assistant menu, AI proposal/attachment/error states, dark screenshot and focus traversal NOT TESTED; Product Cutover HOLD
+  NATIVE_SETTINGS_ROUTE_AUDIT:
+    status: CONFIRMED by static call paths; device verification NOT TESTED
+    finding: index.html ordinary Settings button sends nativeSettings -> WebSkinHost action decoder -> PowerCalApp Page.TOOLS -> NativeToolsPage; MainActivity nativeRecoverySignal is a separate recovery route
+    replacement_paths: Web settings already contains formal reminder/permission, import-export, profile and protected AI Host actions
+    evidence: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (Settings row); precise symbols/lines listed there
+    next: close ordinary Skin route after regression coverage; preserve the independent MainActivity recovery path
 LAST_TASK_EVIDENCE:
   NATIVE_095_AI_INPUT_LIMIT:
     status: PASS (6000-code-unit composer boundary only; AI page and overall Native parity remain PARTIAL)
