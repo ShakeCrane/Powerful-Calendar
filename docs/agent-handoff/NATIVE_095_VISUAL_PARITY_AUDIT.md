@@ -450,6 +450,22 @@ Web `showModal()` 后将焦点放在 dialog 容器本身，打开时不把焦点
 
 本轮全页差异审计确认：密集 Month 卡片顺序/换行/点击，以及事件编辑器外框几何已有可复验窄证据；没有一整页可以据此标成 Native 0.9.5 完整等价。编辑器内部字段与动作层级、Timeline 多状态、Memo、AI、Settings、Deck 和各类审核表面继续按上表移植与验证。Production Cutover 仍 `HOLD`。
 
+## 2026-11-06 Timeline 双翼视口和独立滚动（窄切片 PASS）
+
+Web 双翼之前贴到视口最外缘；冻结参考布局左右两翼分别从 12dp 内缩。本次将默认 Skin `.timelineWing` 宽度改为 `calc(50% - 32px)` 并左右 inset 12px。扩展 Android 仪器用例，对两个翼的屏幕物理边界、左右最大滚动距离、触控位移、Camera 与 Store 写入作定量断言。
+
+| 对照 | Native Compose 参考路径 | Android Web v3 |
+|---|---:|---:|
+| 设备 | API 35 `PowerCal_Wave2_QA35_20261104` / `emulator-5556`，1080×2400、420 dpi | 同设备，System WebView 124.0.6367.219 |
+| 左/右翼边界（屏幕物理 px） | 左 `[32,488]`；右 `[593,1049]` | 左 `[31.46,488]`；右 `[593,1049]`；四边最大差 <2.5px |
+| 横向滚动范围 | 左右均 458px | 174.095 CSS px × 2.621359 = 456.19px，差 1.81px |
+| 真实水平拖动 | 左右各移动 152px，彼此独立 | 左约 152.80px、右约 151.83px；触控只移动对应侧 |
+| 状态不变量 | 24h、本地中午 Camera；8 个 fixture event | 同样保持；Store writes = 0 |
+
+定向仪器方法 `TimelineReturnViewportInstrumentedTest#nativeAndClearLeftAndRightTimelineWingsScrollIndependently` `1/1 PASS`。完整串行 Gradle 门禁 PASS，141 份 JVM XML、976/976、0 failures/errors/skips；源码边界、assemble、Lint、AndroidTest 编译/组装通过。默认分发测试 2/2，包校验通过。Debug APK SHA-256 `960EE33EB990A94290646CDBF8D6C1F714031A237F5B107BCA93CE0316B67DDD`；单一 `powercal-clear-default.pcskin` 410658 bytes，源码与 APK 资源 SHA-256 均为 `7373A2E0B7BE209AD5FCAAB304D90C5F96BD7C77DAC51B453504826FB315C3AF`。
+
+仪器截图和日志见 `.local/android-test/reports/native095-timeline-wings-20261106/manifest.md`。**本切片的 Native 截图来自仪器 Native Compose 参考路径，未直接在原始冻结 APK 进程中运行同夹具。**因此只签核此处量测到的双翼边界、滚动范围与独立手势；不据此宣称整屏、卡片视觉或原始 APK 运行等价。整屏截图仍可见测试壳/系统栏差异。Timeline 整页继续 `PARTIAL`，其它页面和状态仍按差异清单逐项推进；Product Cutover `HOLD`。
+
 ## 2026-11-06 后续：Month agenda 摘要/序号颜色与 Material 文字参数（窄切片 PASS）
 
 冻结 Native `NativeSkinThemeDefaults.lightScheme.onSurface` 为 `#11151C`；`MonthScreen.kt` 事件卡片标题、摘要、序号分别采用 Material `titleMedium`、`bodyMedium`、`labelSmall`。旧 Web 摘要和序号误用浅色变体，且漏掉字距/序号字重。提交 `1ffd87499c8d6d6089eb1c158178d6c39f1e9bf5` 更新 `native-095.css`：标题 `16px/500/24px/.15px`；摘要 `#11151C`、`14px/400/20px/.25px`；序号 `#11151C`、`11px/500/16px/.5px`。测试断言位于 `NativeClearMonthOccurrenceParityInstrumentedTest.kt`。

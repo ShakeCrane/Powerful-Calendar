@@ -91,8 +91,8 @@ html.dark {--deadline-chip:#4A2A18;--deadline-chip-ink:#FFDCC1}
 .timeTick {padding:2px 5px;background:transparent;color:var(--label-2);font-size:12px;font-weight:550;line-height:1.2;z-index:3}
 .timeline-day-separator {position:absolute;z-index:1;left:0;right:0;height:1px;border-top:1px dashed var(--label-4);pointer-events:none}
 .timeline-day-label {position:absolute;left:11px;top:4px;padding:0 4px;background:transparent;color:var(--label-2);font-size:12px;font-weight:600;line-height:1.2;white-space:nowrap}
-.timelineWing {width:calc(50% - 20px);scrollbar-width:none}
-.timelineWing.left {left:0}.timelineWing.right {right:0}
+.timelineWing {width:calc(50% - 32px);scrollbar-width:none}
+.timelineWing.left {left:12px}.timelineWing.right {right:12px}
 .tEventVisual {border-radius:3px 0 0 3px;box-shadow:none}
 .tEventVisual.ACTIVITY {background:rgba(255,255,255,.8);border:1px solid color-mix(in srgb,var(--activity) 36%,transparent);border-left:2px solid var(--activity);padding:0 5px}
 .tEventVisual.ACTIVITY.subpixel-interval {left:var(--native-paint-left-shift,0px);right:auto;width:var(--native-paint-width,100%);box-sizing:border-box;overflow:visible;background:transparent;border:0}

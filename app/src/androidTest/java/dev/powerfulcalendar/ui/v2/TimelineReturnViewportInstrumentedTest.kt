@@ -4,13 +4,20 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.database.DatabaseErrorHandler
 import android.database.sqlite.SQLiteDatabase
+import android.graphics.Bitmap
+import android.graphics.Insets
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.view.InputDevice
 import android.view.MotionEvent
+import android.view.PixelCopy
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
 import android.webkit.WebView
 import androidx.activity.ComponentActivity
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.geometry.Offset
@@ -44,6 +51,31 @@ import kotlin.math.abs
 class TimelineReturnViewportInstrumentedTest {
     @get:Rule
     val compose = createAndroidComposeRule<ComponentActivity>()
+
+    private fun useFrozenVisibleStatusBarInset(): Int {
+        val referenceInsetPx = AtomicReference<Int>()
+        compose.runOnUiThread {
+            compose.activity.enableEdgeToEdge()
+            val decor = compose.activity.window.decorView
+            val resourceId = decor.resources.getIdentifier(
+                "status_bar_height_default", "dimen", "android"
+            ).takeIf { it != 0 } ?: decor.resources.getIdentifier(
+                "status_bar_height", "dimen", "android"
+            )
+            val visibleStatusPx = requireNotNull(resourceId.takeIf { it != 0 }) {
+                "Android must expose the visible status bar height for the frozen reference viewport"
+            }.let(decor.resources::getDimensionPixelSize)
+            referenceInsetPx.set(visibleStatusPx)
+            decor.setOnApplyWindowInsetsListener { _, insets ->
+                WindowInsets.Builder(insets)
+                    .setInsets(WindowInsets.Type.statusBars(), Insets.of(0, visibleStatusPx, 0, 0))
+                    .build()
+            }
+            decor.requestApplyInsets()
+        }
+        compose.waitForIdle()
+        return requireNotNull(referenceInsetPx.get())
+    }
 
     private data class CameraSnapshot(
         val page: String,
@@ -273,6 +305,34 @@ class TimelineReturnViewportInstrumentedTest {
         val range = compose.onNodeWithTag(testTag).fetchSemanticsNode()
             .config[androidx.compose.ui.semantics.SemanticsProperties.HorizontalScrollAxisRange]
         return range.value() to range.maxValue()
+    }
+
+    private fun saveWindowScreenshot(name: String): File {
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        val file = File(requireNotNull(compose.activity.externalCacheDir), name)
+        val bitmap = AtomicReference<Bitmap>()
+        val result = AtomicReference<Int>()
+        val copied = CountDownLatch(1)
+        compose.runOnUiThread {
+            val decor = compose.activity.window.decorView
+            val frame = Bitmap.createBitmap(decor.width, decor.height, Bitmap.Config.ARGB_8888)
+            bitmap.set(frame)
+            PixelCopy.request(compose.activity.window, frame, { status ->
+                result.set(status)
+                copied.countDown()
+            }, Handler(Looper.getMainLooper()))
+        }
+        assertTrue("PixelCopy screenshot timed out", copied.await(10, TimeUnit.SECONDS))
+        assertEquals(PixelCopy.SUCCESS, requireNotNull(result.get()))
+        val frame = requireNotNull(bitmap.get())
+        try {
+            file.outputStream().use { stream ->
+                assertTrue("PixelCopy screenshot encoding failed", frame.compress(Bitmap.CompressFormat.PNG, 100, stream))
+            }
+        } finally {
+            frame.recycle()
+        }
+        return file
     }
 
     private fun clearWingSnapshot(web: WebView, side: String, eventSeq: Long): JSONObject {
@@ -757,6 +817,7 @@ class TimelineReturnViewportInstrumentedTest {
 
     @Test
     fun nativeAndClearLeftAndRightTimelineWingsScrollIndependently() {
+        val referenceStatusInsetPx = useFrozenVisibleStatusBarInset()
         val storage = compose.activity.applicationContext
         val nativeNamespace = "pc-timeline-wings-native-${UUID.randomUUID()}"
         val clearNamespace = "pc-timeline-wings-clear-${UUID.randomUUID()}"
@@ -840,8 +901,19 @@ class TimelineReturnViewportInstrumentedTest {
             val nativeLeftBefore = nativeEventBounds("WING_LEFT_0")
             val nativeRightRangeBefore = nativeHorizontalScrollRange("timeline-right-lanes")
             val nativeLeftRangeBefore = nativeHorizontalScrollRange("timeline-left-lanes")
+            val nativeLeftWingBounds = compose.onNodeWithTag("timeline-left-lanes")
+                .fetchSemanticsNode().boundsInRoot
+            val nativeRightWingBounds = compose.onNodeWithTag("timeline-right-lanes")
+                .fetchSemanticsNode().boundsInRoot
+            val nativeRoot = compose.activity.findViewById<View>(android.R.id.content)
+            val nativeRootOnScreen = IntArray(2)
+            nativeRoot.getLocationOnScreen(nativeRootOnScreen)
+            val nativeScreenshot = saveWindowScreenshot("timeline-wings-native.png")
             println("NATIVE_WING_INITIAL rightEvent=$nativeRightBefore rightRange=$nativeRightRangeBefore " +
-                "leftEvent=$nativeLeftBefore leftRange=$nativeLeftRangeBefore")
+                "leftEvent=$nativeLeftBefore leftRange=$nativeLeftRangeBefore " +
+                "leftWing=$nativeLeftWingBounds rightWing=$nativeRightWingBounds " +
+                "referenceStatusInsetPx=$referenceStatusInsetPx " +
+                "rootOnScreen=${nativeRootOnScreen.toList()} screenshot=${nativeScreenshot.absolutePath}")
             assertTrue("Native left fixture event must be initially visible: $nativeLeftBefore",
                 nativeLeftBefore.width > 0f && nativeLeftBefore.height > 0f)
             assertTrue("Native right fixture event must be initially visible: $nativeRightBefore",
@@ -906,10 +978,46 @@ class TimelineReturnViewportInstrumentedTest {
             awaitJs(web, "!!document.querySelector('#timelineLeft .tEvent[data-event-seq=\"$clearLeftSeq\"]')")
             val clearRightBefore = clearWingSnapshot(web, "RIGHT", clearRightSeq)
             val clearLeftBefore = clearWingSnapshot(web, "LEFT", clearLeftSeq)
+            val clearWingRects = evaluateObject(web, """(() => {
+              const rect=e=>{const r=e.getBoundingClientRect();return {left:r.left,top:r.top,
+                right:r.right,bottom:r.bottom,width:r.width,height:r.height}};
+              return {left:rect(document.querySelector('#timelineLeft')),
+                right:rect(document.querySelector('#timelineRight')),
+                viewport:{width:innerWidth,height:innerHeight},dpr:devicePixelRatio};
+            })()""")
+            val webOrigin = IntArray(2)
+            val webSize = AtomicReference<Pair<Int, Int>>()
+            compose.runOnUiThread {
+                web.getLocationOnScreen(webOrigin)
+                webSize.set(web.width to web.height)
+            }
+            val webScaleX = requireNotNull(webSize.get()).first /
+                clearWingRects.getJSONObject("viewport").getDouble("width")
+            fun nativeScreenX(rootX: Float) = (nativeRootOnScreen[0] + rootX).toDouble()
+            fun webScreenX(cssX: Double) = webOrigin[0] + cssX * webScaleX
+            val nativeLeftScreen = nativeScreenX(nativeLeftWingBounds.left)
+            val nativeLeftRightScreen = nativeScreenX(nativeLeftWingBounds.right)
+            val nativeRightScreen = nativeScreenX(nativeRightWingBounds.left)
+            val nativeRightRightScreen = nativeScreenX(nativeRightWingBounds.right)
+            assertEquals("Clear left wing outer edge matches the frozen Native viewport",
+                nativeLeftScreen, webScreenX(clearWingRects.getJSONObject("left").getDouble("left")), 2.5)
+            assertEquals("Clear left wing axis-side edge matches the frozen Native viewport",
+                nativeLeftRightScreen, webScreenX(clearWingRects.getJSONObject("left").getDouble("right")), 2.5)
+            assertEquals("Clear right wing axis-side edge matches the frozen Native viewport",
+                nativeRightScreen, webScreenX(clearWingRects.getJSONObject("right").getDouble("left")), 2.5)
+            assertEquals("Clear right wing outer edge matches the frozen Native viewport",
+                nativeRightRightScreen, webScreenX(clearWingRects.getJSONObject("right").getDouble("right")), 2.5)
+            val clearScreenshot = saveWindowScreenshot("timeline-wings-web.png")
+            println("CLEAR_WING_INITIAL geometry=$clearWingRects webOrigin=${webOrigin.toList()} " +
+                "nativeRootOnScreen=${nativeRootOnScreen.toList()} screenshot=${clearScreenshot.absolutePath}")
             assertTrue("Clear right wing must expose four-lane overflow: $clearRightBefore",
                 clearRightBefore.getDouble("maxScroll") > 20.0)
             assertTrue("Clear left wing must expose four-lane overflow: $clearLeftBefore",
                 clearLeftBefore.getDouble("maxScroll") > 20.0)
+            assertEquals("Clear right scroll range matches frozen Native physical range",
+                nativeRightRangeBefore.second.toDouble(), clearRightBefore.getDouble("maxScroll") * webScaleX, 2.5)
+            assertEquals("Clear left scroll range matches frozen Native physical range",
+                nativeLeftRangeBefore.second.toDouble(), clearLeftBefore.getDouble("maxScroll") * webScaleX, 2.5)
             assertEquals("Clear left wing initializes at its center-proximal maximum",
                 clearLeftBefore.getDouble("maxScroll"), clearLeftBefore.getDouble("scrollLeft"), 1.0)
             assertEquals("Clear right wing initializes at its outer edge", 0.0,
@@ -926,6 +1034,10 @@ class TimelineReturnViewportInstrumentedTest {
             val clearLeftAfterRightScroll = clearWingSnapshot(web, "LEFT", clearLeftSeq)
             assertTrue("Clear right wing touch must scroll its event toward the center",
                 clearRightAfter.getDouble("eventLeft") < clearRightBefore.getDouble("eventLeft") - 10.0)
+            assertEquals("Native and Clear right-wing touch move the event by the same physical distance",
+                (nativeRightAfter.left - nativeRightBefore.left).toDouble(),
+                (clearRightAfter.getDouble("eventLeft") - clearRightBefore.getDouble("eventLeft")) * webScaleX,
+                2.5)
             assertEquals("Clear right wing scroll must not move left scroll offset",
                 clearLeftBefore.getDouble("scrollLeft"),
                 clearLeftAfterRightScroll.getDouble("scrollLeft"), 1.0)
@@ -942,6 +1054,10 @@ class TimelineReturnViewportInstrumentedTest {
             val clearRightAfterLeftScroll = clearWingSnapshot(web, "RIGHT", clearRightSeq)
             assertTrue("Clear left wing touch must move its event away from the center",
                 clearLeftAfter.getDouble("eventLeft") > clearLeftAfterRightScroll.getDouble("eventLeft") + 10.0)
+            assertEquals("Native and Clear left-wing touch move the event by the same physical distance",
+                (nativeLeftAfter.left - nativeLeftBefore.left).toDouble(),
+                (clearLeftAfter.getDouble("eventLeft") - clearLeftBefore.getDouble("eventLeft")) * webScaleX,
+                2.5)
             assertEquals("Clear left wing scroll must not move right scroll offset",
                 clearRightAfter.getDouble("scrollLeft"),
                 clearRightAfterLeftScroll.getDouble("scrollLeft"), 1.0)

@@ -1,3 +1,12 @@
+## 2026-11-06 Native 0.9.5 Timeline 双翼边界与滚动范围（窄切片 PASS）
+
+- **状态与范围：**Native Compose 参考路径与 Android Web v3 的双翼物理边界、滚动范围、独立触控窄切片 `PASS`；没有在本切片直接运行原始冻结 APK 的同夹具测试，整屏及 Timeline 完整迁移继续 `PARTIAL/IN_PROGRESS`；Product Cutover `HOLD`。
+- **实现：**默认皮肤双翼改为 Native 对齐的 12px 内缩；扩展 `nativeAndClearLeftAndRightTimelineWingsScrollIndependently` 对屏幕四边、最大滚动距离、触控位移、Camera 和 Store 不变量作定量断言。只改表现与测试，不变更 Core/Host 业务行为。
+- **Android：**隔离 API 35 AVD `PowerCal_Wave2_QA35_20261104` / `emulator-5556`，1080×2400、420 dpi、System WebView 124.0.6367.219。Native `[32,488]`/`[593,1049]`；Web 折算 `[31.46,488]`/`[593,1049]`，各边差小于 2.5px。左右滚动最大范围 Native 458px、Web 456.19px；各自触控位移约 152px；八条 fixture event，Store writes 0，Camera 保持 24h 本地中午锚点。
+- **验证：**完整串行 Gradle 门禁 PASS；141 个 JVM XML、976/976、0 failures/errors/skips；源码边界、APK、Lint、AndroidTest compile/package PASS；目标仪器 1/1、分发 Python 2/2、包校验 PASS。
+- **产物：**Debug APK SHA-256 `960EE33EB990A94290646CDBF8D6C1F714031A237F5B107BCA93CE0316B67DDD`；唯一默认包 `powercal-clear-default.pcskin` 410658 bytes，源码/APK SHA-256 `7373A2E0B7BE209AD5FCAAB304D90C5F96BD7C77DAC51B453504826FB315C3AF`。证据 `.local/android-test/reports/native095-timeline-wings-20261106/manifest.md`，Issue `docs/issues/PC-ISSUE-SEPARATION-NATIVE-TIMELINE-WINGS-20261106.md`。
+- **限制：**Native 图为仪器 Compose 参考路径，非原始 APK 进程截图；此处不签核整屏或卡片视觉。原始 APK 同夹具对照、点事件标题色/字号，以及其它时间轴状态仍待执行。
+
 ## 2026-11-06 Native 0.9.5 Timeline 框外标题与贪心折叠（窄切片 PASS）
 
 - **状态与范围：**ACTIVITY 标题放置、物理文字框、实测矩形贪心折叠及折叠事件打开窄切片 `PASS`；Timeline 整页仍 `PARTIAL`，Native 0.9.5 总体迁移仍 `IN_PROGRESS`，Product Cutover `HOLD`。
