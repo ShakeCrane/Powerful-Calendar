@@ -825,7 +825,7 @@ function renderTimeline(){
   if(!t){$("timeRangeLabel").textContent="尚无宿主数据";$("timelineEmpty").hidden=false;return}
   $("timeRangeLabel").textContent=t.hours+" 小时 / 屏";
   const from=Number(t.visibleStartMillis),to=Number(t.visibleEndMillis),span=Math.max(1,to-from);
-  const zone=t.zoneId,axis=$("timelineSurface"),height=Math.max(1,axis.clientHeight);
+  const zone=t.zoneId,axis=$("timelineSurface");
   if(!Number.isFinite(from)||!Number.isFinite(to)||to<=from)return;
   const position=ms=>100*(ms-from)/span;
   const kindLabel={ACTIVITY:"活动",ALARM:"提醒",DEADLINE:"截止事项"};
@@ -865,12 +865,23 @@ function renderTimeline(){
       button.className="dateDeadline";button.dataset.temporalGeometry="date";
       button.dataset.deadlineDate=item.deadlineDate;
       button.dataset.startMillis=String(item.startMillis);
-      button.append(node("span","dateDeadlineTitle",title),
+      const flag=document.createElementNS("http://www.w3.org/2000/svg","svg");
+      flag.setAttribute("viewBox","0 0 24 24");flag.setAttribute("aria-hidden","true");
+      flag.setAttribute("focusable","false");flag.classList.add("dateDeadlineFlag");
+      const flagPath=document.createElementNS("http://www.w3.org/2000/svg","path");
+      flagPath.setAttribute("d","M14.4 6 14 4H5v17h2v-7h5.6l.4 2h7V6z");
+      flag.append(flagPath);
+      const content=node("span","dateDeadlineContent");
+      content.append(node("span","dateDeadlineTitle",title),
         node("span","dateDeadlineDate",`${item.deadlineDate} · 截止，无具体时刻`));
+      button.append(flag,content);
       attachTimelineDrag(button,item,axis);
       dates.append(button);
     }
   }
+  // Showing date-only deadlines changes the flex space available to the true-time
+  // viewport. Measure only after the date strip has reached its visible layout.
+  const height=Math.max(1,axis.clientHeight);
   const tickMinutes=t.hours<=0.75?1:t.hours<=2?5:t.hours<=4?10:t.hours<=6?30:t.hours<=12?60:t.hours<=26?120:240;
   const tickStep=tickMinutes*60000;
   const zonedParts=ms=>Object.fromEntries(new Intl.DateTimeFormat("en-CA",{
@@ -914,8 +925,7 @@ function renderTimeline(){
       lastTickLabelBottom=tickRect.bottom;
     }
   }
-  const timedItems=items.filter(item=>kindLabel[String(item.kind).toUpperCase()]&&
-    !isDateOnlyDeadline(item));
+  const timedItems=items.filter(item=>kindLabel[String(item.kind).toUpperCase()]);
   const laneWidth=84,laneGap=4;
   // Geometry and presentation order belong to this Skin. The Host supplies only
   // true event bounds and stable identities; minimum hit targets never affect lanes.
@@ -950,9 +960,12 @@ function renderTimeline(){
     }
     const rawEnd=isActivity?Number(item.endMillis):startMillis;
     const timeText=relativeTime(startMillis,zone);
+    const dateOnlyDeadline=kind==="DEADLINE"&&isDateOnlyDeadline(item);
     const ariaLabel=isActivity
       ?`${kindLabel[kind]}：${item.title}，${timeText} 至 ${relativeTime(rawEnd,zone)}`
-      :`${kindLabel[kind]}：${timeText}，${item.title}`;
+      :dateOnlyDeadline
+        ?`${kindLabel[kind]}：${item.title}，${item.deadlineDate}，截止，无具体时刻`
+        :`${kindLabel[kind]}：${timeText}，${item.title}`;
     const button=makeEventButton(item,kind,ariaLabel);
     button.dataset.temporalGeometry=isActivity?"interval":"point";
     button.dataset.startMillis=String(startMillis);button.dataset.endMillis=String(rawEnd);

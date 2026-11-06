@@ -481,9 +481,11 @@ class TimelineDragWebViewInstrumentedTest {
             assertEquals("unsupported", repeatedResult.getString("status"))
             assertTrue("A repeated event gesture must produce a fresh Host result",
                 repeatedResult.getString("requestId") != previousRequestId)
-            assertTrue("Host explains why the repeat cannot move", repeatedResult.optString("detail")
-                .contains("重复事件暂不支持拖动"))
-            awaitJs(view, "document.querySelector('#timelineMoveStatus').textContent.includes('重复事件暂不支持拖动')")
+            val repeatedDetail = repeatedResult.optString("detail")
+            assertTrue("Host explains why the repeat cannot move: $repeatedDetail",
+                repeatedDetail.contains("重复事件暂不支持") &&
+                    repeatedDetail.contains("打开卡片可以修改整条重复规则"))
+            awaitJs(view, "document.querySelector('#timelineMoveStatus').textContent.includes('重复事件暂不支持')")
             assertFalse("Rejected repeat does not open the deck",
                 repeatedHost.getJSONObject("editing").getJSONObject("deck").getBoolean("open"))
             assertEquals(countsBefore, Triple(store.draftCount(), store.commitCount(), store.identityCount()))
@@ -791,6 +793,22 @@ class TimelineDragWebViewInstrumentedTest {
             assertEquals(eventSeq, clearCreated.eventSeq)
             val nativeOriginal = requireNotNull(nativeStore.get(eventSeq))
             val clearOriginal = requireNotNull(clearStore.get(eventSeq))
+            val activityStart = sourceDate.atTime(9, 15).atZone(zone).toInstant().toEpochMilli()
+            val activityForm = DraftForm(
+                kind = TemporalKind.ACTIVITY,
+                title = "DATE_DEADLINE_GEOMETRY_ACTIVITY",
+                startText = DraftForm.formatInstant(activityStart, zone),
+                endText = DraftForm.formatInstant(activityStart + 3_600_000L, zone),
+                zoneId = zone.id
+            )
+            val nativeActivityCreated = nativeStore.createFormalEvent(
+                activityForm, "date-deadline-geometry-activity-seed") as PowerStore.CommitOutcome.Committed
+            val clearActivityCreated = clearStore.createFormalEvent(
+                activityForm, "date-deadline-geometry-activity-seed") as PowerStore.CommitOutcome.Committed
+            val activitySeq = nativeActivityCreated.eventSeq
+            assertEquals(activitySeq, clearActivityCreated.eventSeq)
+            val nativeActivityOriginal = requireNotNull(nativeStore.get(activitySeq))
+            val clearActivityOriginal = requireNotNull(clearStore.get(activitySeq))
 
             nativeContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
                 .edit().putBoolean("system-calendar-import-asked", true).commit()
@@ -818,6 +836,8 @@ class TimelineDragWebViewInstrumentedTest {
             val nativeHeight = compose.onNodeWithTag("timeline-viewport")
                 .fetchSemanticsNode().boundsInRoot.height
             assertTrue("Native timeline viewport must have a measurable height", nativeHeight > 0f)
+            val nativeTimelineScreenshot = File(storage.cacheDir, "native095-native-date-deadline.png")
+            saveWindowScreenshot(nativeTimelineScreenshot)
             nativeDeadline.performTouchInput {
                 down(center)
                 advanceEventTime(700)
@@ -859,6 +879,89 @@ class TimelineDragWebViewInstrumentedTest {
                 hostState().getJSONObject("timeline").getDouble("hours") == 24.0
             }
             awaitJs(view, """!!document.querySelector(".dateDeadline[data-event-seq='$eventSeq']")""")
+            awaitJs(view, """!!document.querySelector(".tEvent.DEADLINE[data-event-seq='$eventSeq']")""")
+            awaitJs(view, """!!document.querySelector(".tEvent.ACTIVITY[data-event-seq='$activitySeq'] .tEventVisual")""")
+            val timeline = hostState().getJSONObject("timeline")
+            val visibleStart = timeline.getLong("visibleStartMillis")
+            val visibleEnd = timeline.getLong("visibleEndMillis")
+            val webGeometry = evaluateObject(view, """
+                (()=>{
+                  const surface=document.querySelector('#timelineSurface');
+                  const surfaceRect=surface.getBoundingClientRect();
+                  const activity=document.querySelector(".tEvent.ACTIVITY[data-event-seq='$activitySeq']");
+                  const activityVisual=activity.querySelector('.tEventVisual').getBoundingClientRect();
+                  const deadline=document.querySelector(".tEvent.DEADLINE[data-event-seq='$eventSeq']");
+                  const deadlineLine=deadline.querySelector('.tPointLine.DEADLINE').getBoundingClientRect();
+                  const chip=document.querySelector(".dateDeadline[data-event-seq='$eventSeq']");
+                  const chipRect=chip.getBoundingClientRect();
+                  return {
+                    surfaceHeight:surfaceRect.height,
+                    activityTop:activityVisual.top-surfaceRect.top,
+                    activityHeight:activityVisual.height,
+                    deadlineStartMillis:Number(deadline.dataset.startMillis),
+                    deadlineLineY:deadlineLine.top+deadlineLine.height/2-surfaceRect.top,
+                    deadlineAria:deadline.getAttribute('aria-label')||'',
+                    chipX:chipRect.left,
+                    chipFlexDirection:getComputedStyle(chip).flexDirection,
+                    chipBackground:getComputedStyle(chip).backgroundColor,
+                    chipColor:getComputedStyle(chip).color,
+                    chipTouchAction:getComputedStyle(chip).touchAction,
+                    flag:!!chip.querySelector('svg.dateDeadlineFlag')
+                  };
+                })()
+            """.trimIndent())
+            val visibleSpan = (visibleEnd - visibleStart).toDouble()
+            val surfaceHeight = webGeometry.getDouble("surfaceHeight")
+            val activityStartMillis = requireNotNull(clearActivityOriginal.startMillis)
+            val activityEndMillis = requireNotNull(clearActivityOriginal.endMillis)
+            val expectedActivityTop = (activityStartMillis - visibleStart) / visibleSpan * surfaceHeight
+            val expectedActivityHeight = (activityEndMillis - activityStartMillis) / visibleSpan * surfaceHeight
+            assertEquals("Activity geometry uses the final visible true-time viewport",
+                expectedActivityTop, webGeometry.getDouble("activityTop"), 1.5)
+            assertEquals("Activity span reflects its persisted duration in true-time space",
+                expectedActivityHeight, webGeometry.getDouble("activityHeight"), 1.5)
+            val deadlineAnchor = requireNotNull(clearOriginal.visualAxisMillis(zone))
+            assertEquals("Date-only Deadline keeps the Core presentation anchor", deadlineAnchor,
+                webGeometry.getLong("deadlineStartMillis"))
+            val expectedDeadlineLine = (deadlineAnchor - visibleStart) / visibleSpan * surfaceHeight
+            assertEquals("Date-only Deadline point aligns at the end of its due date",
+                expectedDeadlineLine, webGeometry.getDouble("deadlineLineY"), 1.5)
+            assertFalse("Date precision must not be announced as a clock time",
+                Regex("(?<!\\d)\\d{1,2}:\\d{2}(?!\\d)")
+                    .containsMatchIn(webGeometry.getString("deadlineAria")))
+            assertEquals("Frozen Native date chip uses its horizontal icon-and-copy row",
+                "row", webGeometry.getString("chipFlexDirection"))
+            assertTrue("Frozen Native date chip includes the flag glyph", webGeometry.getBoolean("flag"))
+            assertTrue("Frozen Native date chip uses its light or dark tertiary container",
+                webGeometry.getString("chipBackground") in setOf("rgb(255, 228, 206)", "rgb(74, 42, 24)"))
+            assertTrue("Frozen Native date chip uses its matching foreground",
+                webGeometry.getString("chipColor") in setOf("rgb(94, 45, 13)", "rgb(255, 220, 193)"))
+            assertEquals("Frozen Native chip starts at the 16dp content inset", 16.0,
+                webGeometry.getDouble("chipX"), 1.5)
+            assertEquals("Date chip keeps vertical drag handling in the Web Runtime",
+                "pan-x", webGeometry.getString("chipTouchAction"))
+            val clearTimelineScreenshot = File(storage.cacheDir, "native095-clear-date-deadline.png")
+            saveWindowScreenshot(clearTimelineScreenshot)
+            println("NATIVE_095_TIMELINE_SCREENSHOTS " + JSONObject()
+                .put("native", nativeTimelineScreenshot.absolutePath)
+                .put("clear", clearTimelineScreenshot.absolutePath))
+            println("NATIVE_CLEAR_TIMELINE_TRUE_TIME_GEOMETRY eventSeq=$eventSeq activitySeq=$activitySeq " +
+                "visible=[$visibleStart,$visibleEnd] geometry=$webGeometry")
+            val pointProbe = eventProbe(view, eventSeq, "tEvent.DEADLINE")
+            val commitsBeforePointTap = clearStore.commitCount()
+            val draftsBeforePointTap = clearStore.draftCount()
+            sendTouch(view, pointProbe, holdMillis = 0)
+            awaitJs(view, "!document.querySelector('#skinSheet').hidden")
+            val pointEditor = hostState().getJSONObject("editing").getJSONObject("editor")
+            assertTrue("Touching the 23:59 point opens its existing Deadline", pointEditor.getBoolean("open"))
+            assertEquals(eventSeq, pointEditor.getLong("eventSeq"))
+            assertEquals("Point tap is read-only", commitsBeforePointTap, clearStore.commitCount())
+            assertEquals("Point tap does not create a draft", draftsBeforePointTap, clearStore.draftCount())
+            evaluate(view, "document.querySelector('#sheetClose').click(); true")
+            awaitJs(view, "document.querySelector('#skinSheet').hidden")
+            compose.waitUntil(5_000) {
+                !hostState().getJSONObject("editing").getJSONObject("editor").optBoolean("open")
+            }
             val clearProbe = eventProbe(view, eventSeq, "dateDeadline")
             assertTrue("Clear date-only Deadline must have a real drag target: $clearProbe",
                 clearProbe.getBoolean("found") && clearProbe.getBoolean("hitButton"))
@@ -866,6 +969,26 @@ class TimelineDragWebViewInstrumentedTest {
             assertTrue("Clear timeline surface must have a measurable height", clearHeightCss > 0.0)
             val previousRequestId = hostState().getJSONObject("editing")
                 .optJSONObject("lastResult")?.optString("requestId").orEmpty()
+            evaluate(view, """
+                (()=>{
+                  window.__native095DragTrace=[];
+                  for(const type of ["pointerdown","pointermove","pointerup","pointercancel",
+                    "touchstart","touchmove","touchend","touchcancel"]){
+                    document.addEventListener(type,event=>{
+                      const gesture=typeof timelineDrag==="undefined"?null:timelineDrag;
+                      window.__native095DragTrace.push({type,
+                        target:event.target?.getAttribute?.("class")||event.target?.tagName||"",
+                        x:event.clientX??event.changedTouches?.[0]?.clientX??null,
+                        y:event.clientY??event.changedTouches?.[0]?.clientY??null,
+                        touches:event.touches?.length??null,cancelable:event.cancelable,
+                        prevented:event.defaultPrevented,
+                        active:gesture?.active??null,source:gesture?.source??null,
+                        deltaY:gesture?.deltaY??null,connected:gesture?.button?.isConnected??null,
+                        touchAction:getComputedStyle(document.querySelector(".dateDeadline")).touchAction});
+                    });
+                  }
+                })()
+            """.trimIndent())
             val touch = sendTouch(
                 view,
                 clearProbe,
@@ -873,9 +996,23 @@ class TimelineDragWebViewInstrumentedTest {
                 deltaCssY = clearHeightCss / 24.0
             )
             val stagedHost = awaitHostResultAfter(previousRequestId, "staged")
-            assertEquals("Clear date-strip drag must reach the shared timeline move API",
-                "staged", stagedHost.getJSONObject("editing").getJSONObject("lastResult")
-                    .getString("status"))
+            val moveDebug = evaluateObject(view, """
+                (()=>{
+                  const button=document.querySelector(".dateDeadline[data-event-seq='$eventSeq']");
+                  const gesture=typeof timelineDrag==="undefined"?null:timelineDrag;
+                  return {trace:window.__native095DragTrace||[],
+                    gesture:gesture?{active:gesture.active,source:gesture.source,deltaY:gesture.deltaY,
+                      startX:gesture.startX,startY:gesture.startY,connected:gesture.button.isConnected}:null,
+                    button:button?{rect:(()=>{const r=button.getBoundingClientRect();return {
+                      left:r.left,top:r.top,right:r.right,bottom:r.bottom}})(),
+                      transform:button.style.transform,touchAction:getComputedStyle(button).touchAction}:null,
+                    status:document.querySelector("#timelineMoveStatus")?.textContent||""};
+                })()
+            """.trimIndent())
+            val moveResult = stagedHost.optJSONObject("editing")?.optJSONObject("lastResult")
+            assertEquals("Clear date-strip drag must reach the shared timeline move API; " +
+                "probe=$clearProbe touch=$touch debug=$moveDebug host=$stagedHost",
+                "staged", moveResult?.optString("status"))
             val clearDraft = clearStore.pendingDraftsFor(eventSeq).single()
             val expectedDate = sourceDate.plusDays(1).toString()
             assertEquals(expectedDate, nativeDraft.form.endText)
@@ -895,9 +1032,11 @@ class TimelineDragWebViewInstrumentedTest {
             assertTrue(clearRecord.deadlineMillis == null)
             assertEquals(nativeOriginal, nativeStore.get(eventSeq))
             assertEquals(clearOriginal, clearStore.get(eventSeq))
+            assertEquals(nativeActivityOriginal, nativeStore.get(activitySeq))
+            assertEquals(clearActivityOriginal, clearStore.get(activitySeq))
             assertEquals(1, nativeStore.draftCount())
             assertEquals(nativeStore.draftCount(), clearStore.draftCount())
-            assertEquals(1L, nativeStore.commitCount())
+            assertEquals(2L, nativeStore.commitCount())
             assertEquals(nativeStore.commitCount(), clearStore.commitCount())
             assertEquals(nativeStore.identityCount(), clearStore.identityCount())
             println("NATIVE_CLEAR_DATE_DEADLINE_DRAG eventSeq=$eventSeq date=$sourceDate " +

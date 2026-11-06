@@ -13,6 +13,7 @@
   --alarm:#3D5FD8; --alarm-ink:#2947B6; --alarm-tint:rgba(61,95,216,.09);
   --activity:#177A63; --activity-ink:#0B3A30; --activity-tint:rgba(23,122,99,.09); --activity-card-base:#FDFDFE;
   --deadline:#A8501C; --deadline-ink:#7E3A13; --deadline-tint:rgba(168,80,28,.10);
+  --deadline-chip:#FFE4CE; --deadline-chip-ink:#5E2D0D;
   --memo:#4A5261; --memo-ink:#343B48; --memo-tint:rgba(74,82,97,.08);
   --glass-fill:rgba(255,255,255,.80); --glass-fill-strong:rgba(255,255,255,.96);
   --month-panel-fill:#F2F3F3; --month-panel-outline:rgba(195,202,216,.55);
@@ -36,6 +37,7 @@ html.theme-dark {
   --alarm:#9DB8FF; --alarm-ink:#DCE5FF; --alarm-tint:rgba(157,184,255,.17);
   --activity:#7FD6C2; --activity-ink:#D3EFE7; --activity-tint:rgba(127,214,194,.15); --activity-card-base:#151B27;
   --deadline:#FFB68C; --deadline-ink:#FFDCC1; --deadline-tint:rgba(255,182,140,.16);
+  --deadline-chip:#4A2A18; --deadline-chip-ink:#FFDCC1;
   --memo:#B4BCCB; --memo-ink:#E6EAF2; --memo-tint:rgba(180,188,203,.14);
   --glass-fill:rgba(26,33,48,.82); --glass-fill-strong:rgba(26,33,48,.96);
   --glass-rim-lo:rgba(255,255,255,.12); --glass-shadow:0 2px 8px rgba(0,0,0,.22); --glass-select:#173B33;
@@ -67,6 +69,16 @@ body[data-page="timeline"] .timeline-section-label {display:none}
 .timeline-view-controls {flex:0 0 auto;display:flex;align-items:center;justify-content:flex-start;gap:5px;min-height:46px;margin:0;padding:0 8px;color:var(--label-2)}
 .timeline-view-controls button {display:grid;place-items:center;flex:0 0 44px;width:44px;min-width:44px;height:44px;min-height:44px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--label);font-size:28px;font-weight:400;line-height:1}
 .timeline-view-controls button:active {background:var(--fill-3)}
+html.dark {--deadline-chip:#4A2A18;--deadline-chip-ink:#FFDCC1}
+.deadline-date-bar {padding:0 16px 8px;gap:8px}
+.dateDeadline {display:flex;flex-direction:row;align-items:center;justify-content:flex-start;gap:8px;
+  min-width:0;max-width:min(290px,calc(100vw - 32px));min-height:48px;padding:8px 12px;
+  border:0;border-radius:14px;background:var(--deadline-chip);color:var(--deadline-chip-ink);text-align:left;
+  touch-action:pan-x;-webkit-user-select:none;user-select:none}
+.dateDeadlineFlag {display:block;flex:0 0 18px;width:18px;height:18px;fill:currentColor}
+.dateDeadlineContent {display:flex;flex:0 1 auto;flex-direction:column;align-items:flex-start;min-width:0;max-width:240px}
+.dateDeadline .dateDeadlineTitle {max-width:100%;font-size:14px;font-weight:500;line-height:20px}
+.dateDeadline .dateDeadlineDate {max-width:100%;color:inherit;font-size:11px;line-height:16px}
 #timeRangeLabel {min-width:104px;color:var(--label);font-size:14px;font-weight:550;white-space:nowrap}
 .timeline-gesture-hint {margin-left:auto;padding-right:8px;color:var(--label-2);font-size:13px;white-space:nowrap}
 .timeline-empty {position:absolute;z-index:5;top:114px;left:8px;right:8px;margin:0;color:var(--label-2);text-align:center;font-size:14px;pointer-events:none}
