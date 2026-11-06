@@ -1,3 +1,12 @@
+## 2026-11-06 Native 0.9.5 Timeline 框外标题与贪心折叠（窄切片 PASS）
+
+- **状态与范围：**ACTIVITY 标题放置、物理文字框、实测矩形贪心折叠及折叠事件打开窄切片 `PASS`；Timeline 整页仍 `PARTIAL`，Native 0.9.5 总体迁移仍 `IN_PROGRESS`，Product Cutover `HOLD`。
+- **实现：**长 ACTIVITY 标题此前会按事件框高度进入框内；现始终采用冻结原生的 `start-anchor`，Web 字距设为 `0.43px`。不改变折叠算法、事件目标、Host/Core、Store、恢复路径或默认包 ID。通过正式 `build_default_clear.py` 重建资产。
+- **Android：**隔离 API 35 AVD `PowerCal_Wave2_QA35_20261104` / `emulator-5556`，1080×2400、420 dpi、WebView 124.0.6367.219。Native Compose 与真实 WebView 同夹具五项 ACTIVITY 显示相同标题领先项；`Fold_B` 折叠后点按仍打开其自身编辑器，Store 快照和 commitCount 不变。标题矩形边界在 2.5 物理像素容差内，午间轴几何差 0.67px。
+- **验证：**串行 Gradle 全门禁 PASS，976/976 JVM、0 failures/errors/skips，源码边界、APK、Lint、AndroidTest 编译/打包 PASS；目标 Android instrumentation 2/2、贪心单测 10/10、默认分发测试 2/2、Node 与包校验 PASS。
+- **产物：**Debug APK SHA-256 `E18730AB26D010EDA290989FB0C9FC8B79DF55A55102AA0EA2FB81D4F5A328C1`；单一 `powercal-clear-default.pcskin` 410655 bytes，源码/APK SHA-256 均为 `3B1BBCD210D24458DF40F3AEBC5A4090F7B059F9406E964EAAB81661078BBA0E`。证据 `.local/android-test/reports/native095-timeline-title-20261106/manifest.md`；Issue `docs/issues/PC-ISSUE-SEPARATION-NATIVE-TIMELINE-OUTSIDE-TITLE-GREEDY-FOLDING-20261106.md`；视觉差异总表 `docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md`。
+- **未签核：**ALARM 左翼、所有事件类型/状态、深色/大字体、重复实例及整页所有手势仍未全量对照。本轮不是完整 Timeline parity。
+
 ## 2026-11-06 Timeline 日期级 Deadline 几何与拖动（窄切片 PASS）
 
 - **基准：**Owner 冻结 Native 0.9.5-rc.1 源码 `b1f7629f0c52812e1887443872f43aa6c49908c4`；原始 APK SHA-256 `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`。默认目标仍为唯一 `powercal-clear-default`，Native 保留恢复通道，Product Cutover `HOLD`。

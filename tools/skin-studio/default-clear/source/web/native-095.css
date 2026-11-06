@@ -98,7 +98,7 @@ html.dark {--deadline-chip:#4A2A18;--deadline-chip-ink:#FFDCC1}
 .tEventVisual.ACTIVITY.subpixel-interval {left:var(--native-paint-left-shift,0px);right:auto;width:var(--native-paint-width,100%);box-sizing:border-box;overflow:visible;background:transparent;border:0}
 .tEventVisual.ACTIVITY.subpixel-interval::before {content:"";position:absolute;left:var(--native-paint-border-width,2px);top:var(--native-paint-top,0px);width:var(--native-paint-content-width,calc(100% - 2px));height:var(--native-paint-height,100%);background:color-mix(in srgb,var(--activity) 36%,var(--activity-card-base))}
 .tEventVisual.ACTIVITY.subpixel-interval::after {content:"";position:absolute;left:0;top:var(--native-paint-top,0px);width:var(--native-paint-border-width,2px);height:var(--native-paint-height,100%);background:var(--activity)}
-.tActivityTitle {left:3px;color:var(--activity);font-size:13px;line-height:24px;letter-spacing:.3px;transform:translateY(calc(-100% - 2px))}
+.tActivityTitle {left:3px;color:var(--activity);font-size:13px;line-height:24px;letter-spacing:.43px;transform:translateY(calc(-100% - 2px))}
 .tPointLine {height:1px}
 .now-line {height:0;background:transparent;border-top:1.6px solid var(--now);z-index:5}
 .now-line::after {content:"";position:absolute;left:50%;top:-5px;width:9px;height:9px;border-radius:50%;background:var(--now);box-shadow:0 0 0 5px color-mix(in srgb,var(--now) 20%,transparent);transform:translateX(-50%)}

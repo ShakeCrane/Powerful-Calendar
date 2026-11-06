@@ -125,12 +125,10 @@ function fitTimelineTitle(element){
   }
   const width=measured.right-measured.left;
   element.style.width=width+"px";
-  if(element.dataset.titleFrameHeight){
-    const frameHeight=Number(element.dataset.titleFrameHeight);
-    const inside=Number.isFinite(frameHeight)&&frameHeight>=measured.bottom-measured.top;
-    element.dataset.titlePlacement=inside?"inside":"start-anchor";
+  if(element.dataset.titleFrameTop){
+    element.dataset.titlePlacement="start-anchor";
     const frameTop=Number(element.dataset.titleFrameTop)||0;
-    element.style.top=(frameTop+(inside?Math.min(3,Math.max(0,frameHeight-(measured.bottom-measured.top))):0))+"px";
+    element.style.top=frameTop+"px";
   }
   return renderedTextRect(element);
 }
@@ -990,7 +988,6 @@ function renderTimeline(){
       const title=makeTimelineTitle(item,kind,String(item.title||""),laneWidth-6);
       title.classList.add("tActivityTitle");
       title.dataset.titleFrameTop=String(visualTop-hitTop);
-      title.dataset.titleFrameHeight=String(visualHeight);
       title.style.top=(visualTop-hitTop)+"px";
       button.append(visual,title);
     }else{

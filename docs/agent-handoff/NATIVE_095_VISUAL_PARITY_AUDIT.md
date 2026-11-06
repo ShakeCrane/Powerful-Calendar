@@ -465,3 +465,21 @@ Web `showModal()` 后将焦点放在 dialog 容器本身，打开时不把焦点
 最终串行完整 Gradle gate 在相同产品 CSS/工厂包上 `PASS`：976/976 JVM，无失败、错误或跳过；源码边界、assemble、Lint、AndroidTest 编译/组装 PASS。之后只按冻结主题常量修正 AndroidTest 颜色期望，重新编译/组装并在设备上重跑目标方法 `1/1 PASS`。Chromium Month E2E 与分发测试 2/2 PASS；`build_default_clear.py --verify --apk` PASS。Debug APK SHA-256 `1AB2F1FA90223CDD07D5B181F86562BE646260A384398E53360EA93F3FCAF094`；唯一默认包 `powercal-clear-default`，10 files / 410062 bytes / SHA-256 `57A5498366AD40E7BCF671F4EEB76E23B264546CA9C567C8F4D25BCE2A99FC7C`，APK 资源和源包逐字节一致。最终 Web 截图 SHA-256 `0115C306758C3A00974E351EA3C006E296C5BD433679405D51B2492423619499`；冻结 Native 截图 SHA-256 `9915F9DFF8D1F421F2233F6BEBB38CCBA5D7A44F33C5CEA092BD19C6F5B8B59A`。
 
 字色和样式 tokens 已一致，但 Web 字形 ink bbox 比 Native 下移 1px、摘要宽 6px；这项证据不声称逐字形像素完全相同。密集 agenda 多卡片、长标题换行/贪心折叠、暗色 Month、Month 全状态及其它 Native 页面仍未签核。完整日志/图像在 `.local/android-test/reports/native095-month-card-type-20261106/`，Issue `docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-AGENDA-TYPOGRAPHY-20261106.md`。
+
+## 2026-11-06 Timeline 框外标题与贪心折叠（窄切片 PASS）
+
+对照 Owner 冻结的 Native 0.9.5-rc.1。Web 时间轴此前会按事件框高度把长 ACTIVITY 标题放进事件框；冻结 Native 始终将标题锚定在事件框起点上方。现在 `renderTimeline()` 始终使用 `start-anchor`，不再依据事件持续时长把标题放入框内或加内部偏移；`.tActivityTitle` 字距调整为 `0.43px`，以匹配冻结 Compose 标题的实测框。实际候选文字矩形的贪心折叠算法和所有事件点击/无障碍目标保持原样。
+
+| 对照 | 冻结 Native / 同夹具 Compose | Android Web v3 |
+|---|---|---|
+| 设备 | API 35 `PowerCal_Wave2_QA35_20261104` / `emulator-5556`，1080×2400、420 dpi | 同一隔离测试运行环境；WebView 124.0.6367.219 |
+| 同夹具标题领先项 | `LongActivity`、`Fold_A`、`Fold_C` | 同三项可见；`Fold_B`、`Fold_D` 按实测标题矩形折叠 |
+| 事件目标与点按 | 五个 ACTIVITY 均保留 | 五个均可点且保留完整无障碍标题；点折叠的 `Fold_B` 打开对应编辑器，Store 快照与 commitCount 不变 |
+| 标题框物理像素 | `LongActivity [601,858,802,921]`；`Fold_A [832,1158,942,1221]`；`Fold_C [832,1308,942,1371]` | 依次 `[601.38,858.38,802.41,921.38]`、`[832.38,1158.92,942.28,1221.92]`、`[832.38,1309.20,942.23,1372.20]`；每条边均在 2.5px 容差内 |
+| Camera / 几何动作 | 24 小时视图锚定本地中午 | `today` 产生一次正式 Host action 并回到该 Camera；缩放及复位通过；午间轴几何偏差 0.67px |
+
+验证为窄切片 `PASS`：完整串行 Gradle 门禁 976/976 JVM、0 failures/errors/skips，源码边界、APK、Lint、AndroidTest 编译/组装 PASS；目标 Android instrumentation 2/2、贪心折叠单测 10/10、默认分发测试 2/2、Node 语法和正式包验证 PASS。Debug APK SHA-256 `E18730AB26D010EDA290989FB0C9FC8B79DF55A55102AA0EA2FB81D4F5A328C1`；唯一 `powercal-clear-default.pcskin` 为 410655 bytes，源码/APK SHA-256 均为 `3B1BBCD210D24458DF40F3AEBC5A4090F7B059F9406E964EAAB81661078BBA0E`。APK 包名 `dev.powerfulcalendar`，版本 `0.9.5-rc.1` / 905。
+
+原始 APK 截图 SHA-256 `43B471F7C410BAB4474CE050CF24BA0845994C3A97143D8852972C0D95ACB6E2`；同夹具 Compose/Web 截图 SHA-256 分别为 `B94A4010F051FD3F8695170081FC88B32FC8558CBB820F07AC7F725BC6B843CC` 和 `4DD3CECD95A6610879C4BDB931B92616208B274BF33F54AC8D8D6BB4911FB73`。原始 APK 主界面截图和新 MainActivity 截图使用不同事件状态，仅用于壳标题/分隔线测量，不作为整屏同夹具对照。证据：`.local/android-test/reports/native095-timeline-title-20261106/manifest.md`。
+
+Timeline 整页仍 `PARTIAL`：本切片没有签核 ALARM 左翼、所有事件类型/状态、深色/大字体、重复实例及所有滚动组合。接续动作是以同一多事件夹具核对双翼滚动与定位，再按页面继续移植；产品 Cutover 保持 `HOLD`。问题记录见 `docs/issues/PC-ISSUE-SEPARATION-NATIVE-TIMELINE-OUTSIDE-TITLE-GREEDY-FOLDING-20261106.md`。

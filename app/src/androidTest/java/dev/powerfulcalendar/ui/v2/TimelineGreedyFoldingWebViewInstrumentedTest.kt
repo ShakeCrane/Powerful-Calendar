@@ -4,7 +4,9 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.database.DatabaseErrorHandler
 import android.database.sqlite.SQLiteDatabase
+import android.graphics.Insets
 import android.graphics.Bitmap
+import android.view.WindowInsets
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -15,6 +17,7 @@ import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -45,6 +48,31 @@ import java.util.concurrent.atomic.AtomicReference
 @RunWith(AndroidJUnit4::class)
 class TimelineGreedyFoldingWebViewInstrumentedTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+
+    private fun useFrozenVisibleStatusBarInset(): Int {
+        val referenceInsetPx = AtomicReference<Int>()
+        compose.runOnUiThread {
+            compose.activity.enableEdgeToEdge()
+            val decor = compose.activity.window.decorView
+            val resourceId = decor.resources.getIdentifier(
+                "status_bar_height_default", "dimen", "android"
+            ).takeIf { it != 0 } ?: decor.resources.getIdentifier(
+                "status_bar_height", "dimen", "android"
+            )
+            val visibleStatusPx = requireNotNull(resourceId.takeIf { it != 0 }) {
+                "Android must expose the visible status bar height for the frozen reference viewport"
+            }.let(decor.resources::getDimensionPixelSize)
+            referenceInsetPx.set(visibleStatusPx)
+            decor.setOnApplyWindowInsetsListener { _, insets ->
+                WindowInsets.Builder(insets)
+                    .setInsets(WindowInsets.Type.statusBars(), Insets.of(0, visibleStatusPx, 0, 0))
+                    .build()
+            }
+            decor.requestApplyInsets()
+        }
+        compose.waitForIdle()
+        return requireNotNull(referenceInsetPx.get())
+    }
 
     private class IsolatedAppContext(
         target: Context,
@@ -463,6 +491,7 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
 
     @Test
     fun actualClearTimelineFoldsOnlyCollidingMeasuredTitlesAndKeepsEventTapAndGeometry() {
+        val referenceStatusInsetPx = useFrozenVisibleStatusBarInset()
         val storage = compose.activity.applicationContext
         val namespace = "pc-s0-tl05-" + UUID.randomUUID()
         val useAppDatabase = InstrumentationRegistry.getArguments()
@@ -474,10 +503,12 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
         }
         val databaseName = if (useAppDatabase) "powercal-v2.db" else "timeline.db"
         val store = PowerStore(context, databaseName)
-        val titles = listOf("Fold_A", "Fold_B", "Fold_C", "Fold_D")
+        val titles = listOf("LongActivity", "Fold_A", "Fold_B", "Fold_C", "Fold_D")
         val zone = ZoneId.systemDefault()
         val noon = LocalDate.now(zone).atTime(12, 0).atZone(zone).toInstant().toEpochMilli()
-        val starts = listOf(noon, noon + 60_000L, noon + 7_200_000L, noon + 7_260_000L)
+        val starts = listOf(noon - 4 * 3_600_000L, noon, noon + 60_000L,
+            noon + 7_200_000L, noon + 7_260_000L)
+        val durations = listOf(8 * 3_600_000L, 60_000L, 60_000L, 60_000L, 60_000L)
         val records = mutableListOf<dev.powerfulcalendar.core.TemporalRecord>()
 
         try {
@@ -491,7 +522,7 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
                 ordered.forEachIndexed { index, record ->
                     assertEquals(TemporalKind.ACTIVITY, record.kind)
                     assertEquals(starts[index], record.startMillis)
-                    assertEquals(starts[index] + 60_000L, record.endMillis)
+                    assertEquals(starts[index] + durations[index], record.endMillis)
                 }
                 records += ordered
             } else {
@@ -501,7 +532,7 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
                         kind = TemporalKind.ACTIVITY,
                         title = title,
                         startText = DraftForm.formatInstant(start, zone),
-                        endText = DraftForm.formatInstant(start + 60_000L, zone),
+                        endText = DraftForm.formatInstant(start + durations[index], zone),
                         zoneId = zone.id
                     )
                     val outcome = store.createFormalEvent(
@@ -556,7 +587,7 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
                 nativeNodeExists(nativeTitleTag(record))
             }
             assertEquals("Native should use the same visible lead titles as Clear",
-                listOf("Fold_A", "Fold_C"), nativeVisible)
+                listOf("LongActivity", "Fold_A", "Fold_C"), nativeVisible)
             for ((index, name) in titles.withIndex()) {
                 val record = records[index]
                 val eventNode = compose.onNodeWithTag(nativeEventTag(record), useUnmergedTree = true)
@@ -577,6 +608,12 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
             }
             val nativeTimelineBounds = compose.onNodeWithTag("timeline-viewport")
                 .fetchSemanticsNode().boundsInRoot
+            fun nativeTextBounds(text: String): JSONObject = runCatching {
+                val bounds = compose.onNodeWithText(text, useUnmergedTree = true)
+                    .fetchSemanticsNode().boundsInRoot
+                JSONObject().put("left", bounds.left).put("top", bounds.top)
+                    .put("right", bounds.right).put("bottom", bounds.bottom)
+            }.getOrElse { JSONObject().put("missing", it.javaClass.simpleName) }
             val nativeEvidence = JSONObject()
                 .put("visibleTitles", JSONArray(nativeVisible))
                 .put("viewportPx", JSONObject().put("width", compose.activity.window.decorView.width)
@@ -586,6 +623,9 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
                 .put("timelineBoundsRootPx", JSONObject()
                     .put("left", nativeTimelineBounds.left).put("top", nativeTimelineBounds.top)
                     .put("right", nativeTimelineBounds.right).put("bottom", nativeTimelineBounds.bottom))
+                .put("topLayoutRootPx", JSONObject()
+                    .put("brand", nativeTextBounds("Powerful Calendar"))
+                    .put("zoom", nativeTextBounds("24 小时 / 屏")))
                 .put("titleBoundsRootPx", JSONObject(nativeRectangles))
             val nativeRoot = compose.activity.findViewById<View>(android.R.id.content)
             val nativeRootLocation = IntArray(2)
@@ -593,6 +633,12 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
             nativeEvidence.put("contentRootOnScreenPx", JSONObject()
                 .put("left", nativeRootLocation[0]).put("top", nativeRootLocation[1])
                 .put("width", nativeRoot.width).put("height", nativeRoot.height))
+            nativeEvidence.put("systemInsetsPx", JSONObject()
+                .put("statusTop", nativeRoot.rootWindowInsets?.getInsets(
+                    android.view.WindowInsets.Type.statusBars())?.top ?: -1)
+                .put("navigationBottom", nativeRoot.rootWindowInsets?.getInsets(
+                    android.view.WindowInsets.Type.navigationBars())?.bottom ?: -1)
+                .put("referenceStatusInsetPx", referenceStatusInsetPx))
             val evidenceSuffix = namespace.takeLast(8)
             val nativeScreenshot = saveWindowScreenshot("s0-tl05-native-api35-$evidenceSuffix.png")
             nativeEvidence.put("screenshot", nativeScreenshot.absolutePath)
@@ -630,8 +676,8 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
                     kotlin.math.abs((timeline?.optDouble("hours") ?: Double.NaN) - 24.0) < 0.001
             }
             awaitJs(view,
-                "document.querySelectorAll('#timelineRight .tEvent').length===4 && " +
-                    "['Fold_A','Fold_B','Fold_C','Fold_D'].every(name=>" +
+                "document.querySelectorAll('#timelineRight .tEvent').length===5 && " +
+                    "['LongActivity','Fold_A','Fold_B','Fold_C','Fold_D'].every(name=>" +
                     "Array.from(document.querySelectorAll('#timelineRight .tEvent'))" +
                     ".some(button=>button.dataset.eventTitle===name))")
             awaitJs(view,
@@ -642,7 +688,7 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
 
             val evidence = evaluateObject(view, """
                 (() => {
-                  const names = ["Fold_A","Fold_B","Fold_C","Fold_D"];
+                  const names = ["LongActivity","Fold_A","Fold_B","Fold_C","Fold_D"];
                   const rect = element => {
                     const r = element.getBoundingClientRect();
                     return {left:r.left,top:r.top,right:r.right,bottom:r.bottom,width:r.width,height:r.height};
@@ -656,9 +702,14 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
                       name, seq:Number(button.dataset.eventSeq), lane:Number(button.dataset.lane),
                       state:title.dataset.titleFoldState, comparedTo:title.dataset.titleComparedTo || "",
                       stableId:title.dataset.titleFoldId, source:title.dataset.titleSource,
+                      placement:title.dataset.titlePlacement || "",
                       measured:title.dataset.titleMeasuredRect, screen:title.dataset.titleScreenRect,
                       aria:button.getAttribute("aria-label"), titleAriaHidden:title.getAttribute("aria-hidden"),
                       titlePointerEvents:getComputedStyle(title).pointerEvents,
+                      titleStyle:(()=>{const style=getComputedStyle(title);return {
+                        fontSize:style.fontSize,fontFamily:style.fontFamily,fontWeight:style.fontWeight,
+                        letterSpacing:style.letterSpacing,lineHeight:style.lineHeight
+                      }})(),
                         button:rect(button), title:rect(title),
                         titleGapToStartPx:visual.getBoundingClientRect().top-title.getBoundingClientRect().bottom,
                       visualOverflow:getComputedStyle(visual).overflow,
@@ -673,8 +724,14 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
                     };
                   });
                   const surface = rect(document.querySelector("#timelineSurface"));
+                    const topSelectors = ["#app", ".clear-head", ".clear-brand", ".toolbar",
+                      ".timeline-view-controls", "#dateDeadlineBar", "#axisScroll", ".clear-tabbar"];
                   return {
-                    items, surface, viewport:{width:innerWidth,height:innerHeight},
+                      items, surface, viewport:{width:innerWidth,height:innerHeight},
+                      topRects:Object.fromEntries(topSelectors.map(selector=>{
+                        const element=document.querySelector(selector);
+                        return [selector,element?rect(element):null];
+                      })),
                     devicePixelRatio,
                     axisViewport:rect(document.querySelector("#axisScroll")),
                     appPaddingBottom:getComputedStyle(document.querySelector("#app")).paddingBottom,
@@ -698,10 +755,16 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
             view.getLocationOnScreen(webScreenOrigin)
             val webViewEvidence = JSONObject()
                 .put("originPx", JSONArray(listOf(webScreenOrigin[0], webScreenOrigin[1])))
+                .put("referenceStatusInsetPx", referenceStatusInsetPx)
                 .put("sizePx", JSONArray(listOf(view.width, view.height)))
                 .put("devicePixelRatio", evidence.getDouble("devicePixelRatio"))
                 .put("camera", timelineSummary(hostBridgeState()))
+                .put("topRects", evidence.getJSONObject("topRects"))
                 .put("todayTouch", webTodayTouch)
+            val webPreGeometryScreenshot = saveScreenshot(
+                "s0-tl05-web-pre-geometry-api35-$evidenceSuffix.png", view
+            )
+            webViewEvidence.put("screenshot", webPreGeometryScreenshot.absolutePath)
             println("S0_TL05_WEB_API35_VIEWPORT=" + webViewEvidence)
             val cameraForGeometry = hostBridgeState().getJSONObject("timeline")
             val webSurface = evidence.getJSONObject("surface")
@@ -709,12 +772,15 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
             val webDpr = evidence.getDouble("devicePixelRatio")
             val visibleStart = requireNotNull(cameraForGeometry.getLong("visibleStartMillis"))
             val visibleEnd = requireNotNull(cameraForGeometry.getLong("visibleEndMillis"))
-            val eventNoon = requireNotNull(records.first().startMillis)
+            val items = evidence.getJSONArray("items")
+            val eventNoon = requireNotNull(records.first { it.title == "Fold_A" }.startMillis)
+            val foldAItem = (0 until items.length()).map { items.getJSONObject(it) }
+                .first { it.getString("name") == "Fold_A" }
             val nativeExpectedNoonY = nativeRootLocation[1] + nativeTimelineBounds.top +
                 (eventNoon - visibleStart).toDouble() / (visibleEnd - visibleStart) *
                 nativeTimelineBounds.height
             val webActualNoonY = webScreenOrigin[1] +
-                evidence.getJSONArray("items").getJSONObject(0).getJSONObject("visual")
+                foldAItem.getJSONObject("visual")
                     .getDouble("top") * webDpr
             println("S0_TL05_PHYSICAL_GEOMETRY=" + JSONObject()
                 .put("nativeTimelineBoundsRootPx", nativeEvidence.getJSONObject("timelineBoundsRootPx"))
@@ -733,13 +799,12 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
             assertTrue("Web timeline event geometry must align to Native physical pixels: " +
                 "native=$nativeExpectedNoonY web=$webActualNoonY",
                 kotlin.math.abs(nativeExpectedNoonY - webActualNoonY) <= 1.5)
-            val items = evidence.getJSONArray("items")
-            assertEquals(4, items.length())
+            assertEquals(5, items.length())
             val byName = (0 until items.length()).associate { index ->
                 val item = items.getJSONObject(index)
                 item.getString("name") to item
             }
-            for (name in titles) {
+            for (name in titles.filter { it.startsWith("Fold_") }) {
                 val item = byName.getValue(name)
                 println("S0_TL05_PIXEL_PAINT=" + JSONObject()
                     .put("name", name)
@@ -763,6 +828,7 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
             val dRect = JSONObject(d.getString("screen"))
 
             assertEquals("visible", a.getString("state"))
+            assertEquals("visible", byName.getValue("LongActivity").getString("state"))
             assertEquals("folded", b.getString("state"))
             assertEquals("visible", c.getString("state"))
             assertEquals("folded", d.getString("state"))
@@ -772,18 +838,30 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
             assertTrue("A/B measured screen text rectangles must overlap", overlaps(aRect, bRect))
             assertTrue("A/C measured screen text rectangles must not overlap", !overlaps(aRect, cRect))
             assertTrue("C/D measured screen text rectangles must overlap", overlaps(cRect, dRect))
+            val titleGeometry = JSONObject()
             for (name in nativeVisible) {
                 val nativeTitle = nativeRectangles.getValue(name)
-                val webTitle = byName.getValue(name).getJSONObject("title")
+                val webItem = byName.getValue(name)
+                assertEquals("Native ACTIVITY titles remain outside their event frame for $name",
+                    "start-anchor", webItem.getString("placement"))
+                val webTitle = webItem.getJSONObject("title")
+                val webPhysicalTitle = JSONObject()
                 for (edge in listOf("left", "top", "right", "bottom")) {
                     val webScreenEdge = webScreenOrigin[if (edge == "left" || edge == "right") 0 else 1] +
                         webTitle.getDouble(edge) * evidence.getDouble("devicePixelRatio")
+                    webPhysicalTitle.put(edge, webScreenEdge)
+                }
+                titleGeometry.put(name, JSONObject().put("native", nativeTitle).put("web", webPhysicalTitle)
+                    .put("style", webItem.getJSONObject("titleStyle")))
+                println("S0_TL05_TITLE_GEOMETRY_" + name + "=" + titleGeometry.getJSONObject(name))
+                for (edge in listOf("left", "top", "right", "bottom")) {
+                    val webScreenEdge = webPhysicalTitle.getDouble(edge)
                     assertEquals("Native and Web title $edge bounds match in physical screen pixels for $name",
                         nativeTitle.getDouble(edge), webScreenEdge, 2.5)
                 }
             }
             val devicePixelRatio = evidence.getDouble("devicePixelRatio")
-            for (name in titles) {
+            for (name in titles.filter { it.startsWith("Fold_") }) {
                 val item = byName.getValue(name)
                 val visual = item.getJSONObject("visual")
                 val paint = item.getJSONObject("paint")
@@ -809,11 +887,12 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
             assertEquals("Fold_B", b.getString("source"))
             assertEquals("true", b.getString("titleAriaHidden"))
             assertEquals("none", b.getString("titlePointerEvents"))
-            assertEquals(0, a.getInt("lane"))
-            assertEquals(0, b.getInt("lane"))
-            assertEquals(0, c.getInt("lane"))
-            assertEquals(0, d.getInt("lane"))
-            assertEquals(4, evidence.getInt("eventButtons"))
+            assertEquals(0, byName.getValue("LongActivity").getInt("lane"))
+            assertEquals(1, a.getInt("lane"))
+            assertEquals(1, b.getInt("lane"))
+            assertEquals(1, c.getInt("lane"))
+            assertEquals(1, d.getInt("lane"))
+            assertEquals(5, evidence.getInt("eventButtons"))
             assertTrue("Timeline axis ticks remain rendered", evidence.getInt("axisTicks") > 0)
             assertTrue("Current-time marker remains rendered", evidence.getBoolean("currentLine"))
             val axisViewport = evidence.getJSONObject("axisViewport")
@@ -859,7 +938,7 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
 
             fun reflowTrace(): JSONObject = evaluateObject(view, """
                 (() => {
-                  const names=["Fold_A","Fold_B","Fold_C","Fold_D"];
+                  const names=["LongActivity","Fold_A","Fold_B","Fold_C","Fold_D"];
                   const right=document.querySelector("#timelineRight");
                   const axis=document.querySelector("#axisScroll");
                   const surface=document.querySelector("#timelineSurface");
@@ -961,17 +1040,17 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
             evaluate(view, "(()=>{const right=document.querySelector('#timelineRight');" +
                 "right.scrollLeft=right.scrollWidth;return right.scrollLeft})()")
             awaitJs(view, "Array.from(document.querySelectorAll('#timelineRight .timelineTitle'))" +
-                ".length===4&&Array.from(document.querySelectorAll('#timelineRight .timelineTitle'))" +
+                ".length===5&&Array.from(document.querySelectorAll('#timelineRight .timelineTitle'))" +
                 ".every(title=>title.dataset.titleFoldState==='clipped')")
             val horizontalClipped = reflowTrace()
-            assertEquals("Horizontal clipping preserves all four event targets", 4,
+            assertEquals("Horizontal clipping preserves all five event targets", 5,
                 evaluate(view, "document.querySelectorAll('#timelineRight .tEvent').length").toInt())
 
             evaluate(view, "(()=>{const right=document.querySelector('#timelineRight');" +
                 "right.scrollLeft=0;right.querySelector('.timelineLanes').style.width=" +
                 JSONObject.quote(baselineRightLanes.getString("width")) + ";return true})()")
             awaitJs(view, "(()=>{const items=Array.from(document.querySelectorAll('#timelineRight .timelineTitle'));" +
-                "return items.length===4&&items.every(title=>['visible','folded'].includes(title.dataset.titleFoldState))})()")
+                "return items.length===5&&items.every(title=>['visible','folded'].includes(title.dataset.titleFoldState))})()")
             val horizontalRestored = reflowTrace()
             assertGreedyLeadTrace(horizontalRestored, "horizontal return")
             assertMeasuredRectsMatchBaseline(horizontalRestored, "horizontal return")
@@ -1031,7 +1110,7 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
                 zoomHostState.getJSONObject("timeline").getDouble("hours"), 0.001)
             awaitJs(view, "document.querySelector('#timeRangeLabel')?.textContent?.startsWith('16 小时')===true", 8_000L)
             awaitJs(view, "(()=>{const items=Array.from(document.querySelectorAll('#timelineRight .timelineTitle'));" +
-                "return items.length===4&&items.every(title=>['visible','folded'].includes(title.dataset.titleFoldState))})()")
+                "return items.length===5&&items.every(title=>['visible','folded'].includes(title.dataset.titleFoldState))})()")
             val zoomed = reflowTrace()
             assertGreedyLeadTrace(zoomed, "16-hour zoom")
             assertTrue("Zoom keeps central time axis and ticks",
@@ -1045,7 +1124,7 @@ class TimelineGreedyFoldingWebViewInstrumentedTest {
                 resetTouch.getJSONArray("messages").toString().contains("resetTimelineZoom"))
             awaitJs(view, "document.querySelector('#timeRangeLabel')?.textContent?.startsWith('24 小时')===true", 8_000L)
             awaitJs(view, "(()=>{const items=Array.from(document.querySelectorAll('#timelineRight .timelineTitle'));" +
-                "return items.length===4&&items.every(title=>['visible','folded'].includes(title.dataset.titleFoldState))})()")
+                "return items.length===5&&items.every(title=>['visible','folded'].includes(title.dataset.titleFoldState))})()")
             val reset24Hour = reflowTrace()
             assertGreedyLeadTrace(reset24Hour, "24-hour reset")
             assertMeasuredRectsMatchBaseline(reset24Hour, "24-hour reset")
