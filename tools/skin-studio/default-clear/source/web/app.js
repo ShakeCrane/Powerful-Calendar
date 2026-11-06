@@ -997,8 +997,9 @@ function renderTimeline(){
       if(!Number.isFinite(endMillis)||endMillis<=startMillis||startMillis>=to||endMillis<=from)continue;
       actualStart=Math.max(from,startMillis);actualEnd=Math.min(to,endMillis);
     }else{
-      if(startMillis<from||startMillis>=to)continue;
       actualStart=startMillis;actualEnd=startMillis;anchorY=(startMillis-from)/span*height;
+      const pointMargin=80/Math.max(1,Number(window.devicePixelRatio)||1);
+      if(anchorY < -pointMargin || anchorY > height+pointMargin)continue;
     }
     const rawEnd=isActivity?Number(item.endMillis):startMillis;
     const timeText=relativeTime(startMillis,zone);

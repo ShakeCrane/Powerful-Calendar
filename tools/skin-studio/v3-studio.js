@@ -1160,6 +1160,18 @@ function simulatedState(){
       title:`并行时刻 ${index+1}`,side:"LEFT",lane:index+3,
       startMillis:base+7200000,endMillis:base+7200000,precision:"INSTANT",deadlineDate:null
     })));
+    const visibleStart=anchor-hours*1800000,visibleEnd=anchor+hours*1800000;
+    rows.push(
+      {eventSeq:400,revision:1,occurrenceKey:"400:edge-alarm",kind:"ALARM",
+        title:"窗顶时刻提醒",side:"LEFT",lane:12,startMillis:visibleStart-1800000,
+        endMillis:visibleStart-1800000,precision:"INSTANT",deadlineDate:null},
+      {eventSeq:401,revision:1,occurrenceKey:"401:edge-deadline",kind:"DEADLINE",
+        title:"窗底精确截止",side:"LEFT",lane:13,startMillis:visibleEnd+1800000,
+        endMillis:visibleEnd+1800000,precision:"INSTANT",deadlineDate:null},
+      {eventSeq:402,revision:1,occurrenceKey:"402:outside-edge-margin",kind:"ALARM",
+        title:"超出原生边界的时刻",side:"LEFT",lane:14,startMillis:visibleStart-8*3600000,
+        endMillis:visibleStart-8*3600000,precision:"INSTANT",deadlineDate:null}
+    );
   }
   if(scenario==="timeline-drag")rows=[
     {eventSeq:501,revision:4,occurrenceKey:"501:single",kind:"ACTIVITY",

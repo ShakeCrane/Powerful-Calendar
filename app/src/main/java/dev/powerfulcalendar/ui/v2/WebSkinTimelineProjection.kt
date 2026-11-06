@@ -55,13 +55,26 @@ internal object WebSkinTimelineProjection {
                 else start >= visibleStart && start < visibleEnd
             }
         }
+        val edgePoints = projected.filter { slot ->
+            val record = slot.record
+            if (record.kind == TemporalKind.ACTIVITY || record.isDateOnlyDeadline()) {
+                false
+            } else {
+                val start = record.anchorMillis() ?: return@filter false
+                start < visibleStart || start >= visibleEnd
+            }
+        }
         // A bounded subset is explicit; do not imply that clipped occurrences are absent.
-        val selected = overlapping.sortedWith(compareBy<DisplayOccurrence>(
+        val nearestFirst = compareBy<DisplayOccurrence>(
             { abs((it.record.visualAxisMillis() ?: camera.anchorMillis).toDouble() -
                 camera.anchorMillis.toDouble()) },
             { it.owner.eventSeq },
             { it.key }
-        )).take(MAX_ITEMS).sortedWith(compareBy(
+        )
+        val visibleSelected = overlapping.sortedWith(nearestFirst).take(MAX_ITEMS)
+        val edgeSlots = (MAX_ITEMS - visibleSelected.size).coerceAtLeast(0)
+        val selected = (visibleSelected + edgePoints.sortedWith(nearestFirst).take(edgeSlots))
+            .sortedWith(compareBy(
             { it.record.visualAxisMillis() ?: Long.MAX_VALUE },
             { it.owner.eventSeq }, { it.key }
         ))
@@ -97,6 +110,6 @@ internal object WebSkinTimelineProjection {
             .put("items", entries)
             .put("itemLimit", MAX_ITEMS)
             .put("truncated", records.count { it.kind != TemporalKind.MEMO } > MAX_OWNERS ||
-                overlapping.size > MAX_ITEMS)
+                overlapping.size > MAX_ITEMS || edgePoints.size > edgeSlots)
     }
 }

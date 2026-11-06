@@ -689,3 +689,43 @@ Raw/Web fixture Store 均为 drafts=0, commits=8, identities=8，无夹具外写
 - 尚未迁移的已确认差异：冻结 Native 保留锚点位于可视时间窗外 80px 以内的时点记录，其 56dp 命中区仍可能部分进入画面；`WebSkinTimelineProjection` 和 Web renderer 当前按精确 `visibleStartMillis/visibleEndMillis` 过滤。下一步应以实际 viewport 几何引入有界 margin，并在窗顶 ALARM、窗底 DEADLINE 上重放可见 sliver 点击。不能把本节当作 Timeline 整体 PASS。
 
 AI 输入/历史长度、编辑器布局、跨状态相机、其他 Native 页面与组件、无障碍和恢复仍是独立未关闭项。Native 安全恢复未变，Product Cutover 仍 HOLD。
+
+## 2026-11-06 全页面可见状态补充盘点
+
+本节补齐每个页面类别内部的可见状态与交互入口，作为后续逐项移植清单；它是源码审计，不代表相应 Web 页面已通过等价验收。冻结源码仍以 `b1f7629f0c52812e1887443872f43aa6c49908c4` 为准；以下括号同时给出冻结文件名和分离后 Native 参考组件，避免把分离后的实现当作原始 APK 的直接证据。
+
+| Native 页面 / 子表面 | 冻结实现与可见状态、交互 | Web v3 当前承载位置 | 差异结论 |
+|---|---|---|---|
+| 应用壳、系统栏与全局提示 | `NativePowerNavigation.kt` / `SkinnableChrome.kt`：时间轴、日历、AI、设置四个常驻目的地；Memo 从时间轴进入。页面切换、状态栏/导航栏 inset、IME 与带 polite live-region 语义的短时 Notice 都是用户可见行为。 | `index.html` 四项底栏、`app.js` 路由/返回、Host Notice 与 WebView inset 转接。 | 主路由数量与角色相同；图标、焦点顺序、IME/系统栏边界与 Notice 出现/播报时序仍需同一 AVD 对照，`PARTIAL`。 |
+| Timeline 事件只读检查 | 冻结 `TimelineScreen.kt`：AI 锁定时点击事件不会进入编辑，而打开摘要、备注及“AI 正在处理卡组，暂时只可查看”的详情；新建入口同时禁用。分离参考 `NativeTimelineScreen.kt` + `NativeEventInspection.kt`。 | `app.js::renderTimeline`、`WebSkinHost` 对应只读/编辑 Host 状态。 | 页面已有事件点击路径，但锁定期间的详情表面、按钮禁用、返回结果尚无同数据截图和触控配对，需移植并验证。 |
+| Timeline 拖动与裁切 | 冻结 `TimelineScreen.kt`：事件卡或框外标题长按进入拖动，显示目标时刻提示；松手才调用 `onMoveEvent`，取消不写入。点位/活动的真实时间几何、双翼滚动、可见标题矩形贪心折叠、超出 viewport 80px 的点位候选过滤也属于同一交互面。 | `app.js::renderTimeline`、`title-folding.js`、Web Host 的 move action。 | 现有 Web 有双翼、真实几何、标题折叠与拖动 Host 路径；时点边缘候选已作为独立窄项施工。AI 锁定拖动、取消零写入及全状态逐项比较仍 `PARTIAL`。 |
+| Month 页面与月份选择 | 冻结 `MonthScreen.kt`：上/下月、今日、七列日期格、日格事件数量/选中态、agenda 卡片/重复实例、选中日新建；年份/月份选择面板可打开、选择、取消和点遮罩关闭。 | `app.js::renderMonth`、月份/日期 Host actions 与现有 Web 对话框。 | 年/月选择、agenda 顺序、卡片点开目标已有若干设备窄证据；月格/密集与空状态、边缘/焦点状态仍需按冻结 APK 逐项回放，页面 `PARTIAL`。 |
+| Memo / 待办列表 | 冻结 `MemoCenterScreen.kt`：Open/Done 筛选、行内完成/撤销、点标题打开详情/编辑、空列表提示、返回时间轴。 | `app.js::renderMemo` 与 Memo Host API。 | Open/Done 与常规行路由有既有功能证据；原始冻结屏幕的行密度、完成撤销和详情点按尚未同 fixture 完整配对。**版本边界：**冻结 SHA 的 `MemoCenterScreen.kt` 是 `LazyColumn`，没有“加载更多”按钮；冻结 `PowerCalApp.kt` 有 `memoTruncated` 状态。分离后 `native-skin/.../MemoCenterScreen.kt` 增加了加载更多显示逻辑，该新增行为不能反推为 0.9.5 视觉基准，也不应作为迁移必需项。 |
+| AI 聊天、消息菜单与附件 | 冻结 `AiChatScreen.kt`：空/历史消息、忙碌、发送、待处理菜单（处理事件、批量发布/丢弃、清 AI 临时缓存、清聊天）、消息长按（从消息建草稿、用户消息编辑重发、回退/撤回、复制）、附件菜单（图片智能识别、ICS/文档/表格）；提案审核卡也在聊天上下文显示。 | `app.js::renderChat`、AI/草稿 Host actions、正式提案审核视图。 | 页面/部分消息菜单动作已有 WebView 测试；菜单顺序与锚点、忙碌/空历史、附件和提案各状态的视觉、拒绝/错误路径仍需用冻结 APK 配对。 |
+| AI 输入内容审核 | 冻结 `PowerCalApp.kt` 与 AI 输入审核表面：图片可选择原图/OCR 文本/取消；OCR 文本可检查和编辑；文件展示解析摘要，允许选择提取片段并去除隐私文本，再由用户确认提交。 | Web Runtime 只发起 Host 动作，`NativeAiInputReview.kt` / Host 系统审查负责受信确认。 | 敏感文件读取、URI、OCR 内容授权仍归 Host；Web 不能接管原生信任边界。审核层级、可见文案和取消零写入需单独画面及行为对照。 |
+| Draft Deck 草稿/提案卡组 | 冻结 `DraftDeck.kt` 与 `PowerCalApp.kt` 路由：无卡空态、普通/AI 锁定只读、搜索与逐卡浏览、展开表单、新建模式、保存/重试暂存、恢复既有事件、删除确认、冲突差异、发布/丢弃完成态、撤销及关闭；AI 批次有进度/等待状态。 | `edit.js` deck 模式、`#pendingDeck`、Host/Core DraftReview actions。 | Web 已有对应动作与数据路径，但卡片叠层、状态层级、确认弹窗、恢复冲突与完成撤销表面仍明显不同；必须拆成状态用例移植，不可用单张草稿截图代替。 |
+| 四类事件表单与正式事件编辑 | 冻结 `DraftDeck.kt` / `DirectEventEditor.kt`：ACTIVITY、ALARM、DEADLINE、MEMO 字段按类型变化；Deadline 日期级/精确时刻切换，Memo 无日期与完成跟踪，地点/备注、启用、提醒模式与自定义时间，重复频率/结束条件；正式编辑要求选择 Single / This-and-future / Whole 范围；保存修改、放弃、存档退出、删除确认、错误/冲突均是可见状态。分离组件对应 `NativeDraftDeckScreen.kt`、`NativeDirectEventEditor.kt`、`NativeEventInspection.kt`。 | `edit.js::renderForm/render`、Host/Core Event / Recurrence / DraftReview APIs。 | 业务 API 已覆盖四类表单及重复作用域，但 Web 高面积表单/卡组与原生紧凑底部动作不同；条件字段、键盘展开、干净关闭、脏关闭、可信删除与冲突提示都未完成原生画面逐态对照，`PARTIAL`。 |
+| Settings 与受保护配置 | 冻结 `PowerCalApp.kt`：资料编辑/保存；AI 配置折叠与展开、端点/模型/密钥字段、启用状态、文件自动处理授权撤销、保存/保存并启用；通知/精确闹钟、提醒重建与诊断、系统日历导入、备份恢复、ICS。皮肤目录是 Owner 已退役的旧产品入口，不属于目标 UI。 | `app.js::renderSettings` + 正式 Host/SAF/Android 权限入口；密钥仍由 Host 保护。 | 权限与文件调用已有正式 Host；资料编辑和设置卡片外观、折叠态/错误态、授权撤销确认、返回路径仍需视觉与触控对照。密钥、URI、授权令牌不得投影进 Skin。 |
+| 通用 Picker、提示与可信弹层 | 冻结 `SkinnablePickers.kt`、`SkinnableOverlays.kt`、`SkinnableChrome.kt`：日期/时间选择、删除/权限/正式写入确认、短时 Notice、系统回退及窗口遮罩。 | Skin 自有可编辑 UI + Host 拥有的可信确认/系统 Picker。 | Skin Studio 可改的普通结构必须与不可替换的 Host 信任表面分开；Web 对话框不能替代系统 Picker 或正式写入批准。尚无完整全状态截图矩阵，`PARTIAL`。 |
+
+### 有限结论与执行顺序
+
+1. **目前已知等价的是组件或动作子集，不是任何一整页。**四项导航角色、Timeline 双翼/真实时间几何与部分标题折叠、Month 的年份/月选择器、若干事件点击、Memo/AI 的若干 Host 路径已有证据；详见本审计上方各带日期的实际设备记录。所有页面总体验收保持 `PARTIAL`。
+2. **优先移植的缺口**是同屏状态而非新业务：Timeline 锁定只读与边缘点位、三种页面空/忙/错误态、原生 Draft Deck/编辑器紧凑层级与可信弹层、AI 输入审核的 Host 边界表现、Settings 资料与权限状态、IME/系统栏/无障碍焦点。
+3. 每个切片继续固定原始 APK SHA、Web APK/Skin SHA、设备几何、时钟/时区与 Store fixture；记录原图、Web 图、布局矩形及真实触点结果。抽取后的 Native Compose 仅可作为辅助参考，不能替代冻结 0.9.5-rc.1 原始 APK 证据。
+4. 旧皮肤目录保持 `RETIRED-BY-OWNER`；唯一正式 Skin ID 与包身份、历史选择兼容和 Native 独立恢复是迁移安全工作，不是视觉复刻入口。Product Cutover 仍 `HOLD`。
+
+## 2026-11-06 补充：定时点事件的视口边缘命中
+
+这是 Timeline 的一个窄差异闭环，不提升 Timeline 或整页的签核状态。原始冻结 APK 与新版 WebView 的设备证据分别见 Issue `PC-ISSUE-SEPARATION-NATIVE-TIMED-POINT-HITBOX-20261106` 和本轮报告目录 `.local/android-test/reports/native095-edge-points-20261106/manifest.md`。
+
+| 检查项 | 冻结 0.9.5-rc.1 原始 APK | Web v3 / Host 投影 | 结论 |
+|---|---|---|---|
+| 边界候选 | 原生保留进入 80 physical-px clip margin 的定时点事件 | Host 从有界 occurrence 查询补入最邻近边界的点候选；Skin 按 `80 / devicePixelRatio` CSS px 裁剪 | 有界策略已迁移 |
+| 上缘 Deadline | 24h→16h/屏并纵向滚动后，截图测得 surface 顶边约 `y=391`、deadline marker 约 `y=461`，目标约 70 physical px 进入视口；点击 `(360,430)` 打开原始 APK 的事件 `#0012`，未保存 | Android WebView instrumentation 的真实触控分别命中 ALARM 与 Deadline 的部分可见目标；8h 远候选未渲染 | 该交互切片 PASS |
+| Store | 打开编辑器且未保存；没有执行正式写入操作 | Native/Web 隔离 Store 均为 `(0 drafts, 3 commits, 3 identities)`，操作前后相同 | 未见业务写入 |
+| 几何 | 原始 APK 的单一上缘触点与 Web instrumentation 的双边缘触点使用不同的隔离测试数据/相机位置，因此这组材料证明行为可达性，不是完整的同像素 A/B 比较 | Web viewport `[100,762.2857]` CSS；ALARM/Deadline marker 分别在边界外 `14.0417`/`13.2560` CSS px，可见 hit sliver 为 `42.2083`/`42.4940` CSS px | 只签核边缘可触，不宣称框体像素相同 |
+
+原始 APK 与已安装 `base.apk` SHA-256 均为 `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`；Web debug APK SHA-256 `39A89C98A0789963EFABCD8DC13106D55859ADCBB24378B10D11920ACA91D634`；默认包 SHA-256 `7AA3700A0D1E1CE1F19943CE012595E55A933B8D75FBFDBE306987537CDFE3EC`，资源中仍只有一个 `.pcskin`。全量 JVM 982/982、源码边界、assemble、Lint、AndroidTest 编译均 PASS；设备定向用例 1/1 PASS。
+
+留存差异：原始 APK 的单一上缘触点与 Web instrumentation 的双边缘触点使用不同的隔离测试数据/相机位置，因此这组材料证明行为可达性，不是完整的同像素 A/B 比较。截图与精确命令在 ignored `.local` 报告中；全 Timeline、框外标题、密集事件及其他 Native 页面仍为 `PARTIAL`。

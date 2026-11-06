@@ -1,6 +1,6 @@
 # PC-ISSUE-SEPARATION-NATIVE-TIMED-POINT-HITBOX-20261106
 
-**状态：PARTIAL（可视时间窗内的点位热区方向已移植；窗外部分可见点事件尚未覆盖）**  
+**状态：PARTIAL（可视时间窗内的点位热区方向和视口边缘命中 sliver 已移植；Timeline 整体仍未闭合）**
 **代码提交：** `06649a334d12d0e7e9371fcc08d26a3fcc7ee9ad`  
 **基准：** 冻结原生 0.9.5-rc.1，源码 `b1f7629f0c52812e1887443872f43aa6c49908c4`  
 **日期：** 2026-11-06
@@ -27,3 +27,15 @@ Native `NativeTimelineScreen.kt` 对 ALARM/DEADLINE 使用 56dp 命中区：ALAR
 ## 残留差异
 
 Native 会保留锚点在可视时间窗外 80px 以内的点事件，使其热区 sliver 可触。Web Host/renderer 目前精确过滤可视窗口外的点事件，因此窗口上方的 ALARM 和下方的 DEADLINE 可能没有对应节点。需要将 Android viewport 与 Web CSS viewport 的实际缩放纳入有界 margin，再用两端真实设备点击 sliver 验证。整体 Timeline 和默认 Skin parity 继续 PARTIAL，Product Cutover 继续 HOLD。
+
+## 2026-11-06 补充：视口边缘点事件
+
+上面的“残留差异”记录的是 `06649a3` 时的状态。本次已实现并验证有限边缘候选：Host 投影只从既有有界查询中优先保留可见项，再用剩余 `MAX_ITEMS` 名额保留最近的定时 ALARM/Deadline；Web renderer 仅绘制锚点落在视口外不超过 `80 / devicePixelRatio` CSS px 的点事件。ACTIVITY 与日期型 Deadline 的窗口规则不变，远离视口的候选不会渲染。
+
+- 冻结原始 APK 文件与 `emulator-5590` 上已安装 `dev.powerfulcalendar` 的 `base.apk` 均为版本 `0.9.5-rc.1` / code 905，SHA-256 `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`。设备 `PowerCal_Native095_RawFixture_20261106`，API 35，1080×2400，420 dpi；未清除应用数据。
+- 在原始 APK 中通过 24h→16h/屏缩放与时间轴纵向滚动，将既有 12:00 Deadline 移至视口上缘。截图中 Native Timeline surface 顶边约为 `y=391`，截止 marker 约为 `y=461`，故 56dp 点目标有约 70 physical px 进入画面；点按 `(360,430)` 后打开对应 `编辑事件 #0012`。未保存、未修改记录。证据截图：`.local/android-test/reports/native095-edge-points-20261106/screenshots/native095-edge-zoom1-scrollup.png`（SHA-256 `FF2E74340EB23D2500FBAC83928A58F8088B94172C5478F4AEDD79A47A3A8FE7`）和 `native095-edge-raw-tap.png`（SHA-256 `773EAE34564A89F230033BEFFE87F0E2B613C615EDF77059DB6B2532E9D31C4B`）。
+- 同一隔离 API 35 WebView AVD `PowerCal_Wave2_QA35_20261104` / `emulator-5556`（WebView 124.0.6367.219）运行 `TimelineDragWebViewInstrumentedTest#nativeAndClearExposeTimedPointHitSliversAtBothTimelineViewportEdges`，1/1 PASS。Native viewport 为 `[0,391,1080,2127]`；Web CSS surface 为 `top=100,bottom=762.2857`。ALARM 与 Deadline 的目标分别有 `42.2083`、`42.4940` CSS px 在视口内，浏览器实际触点命中 `.tEvent ALARM` / `.tEvent DEADLINE`；marker 分别在边界外 `14.0417`、`13.2560` CSS px。8h 远的 ALARM 不渲染。
+- Native 与 Web 两条测试路径点按后 Store 均保持 `(0 drafts, 3 commits, 3 identities)`。对应截图 `native095-edge-native.png` SHA-256 `7E9C188D24AB147F40B8AD102091392848F4BBE56E33B56DE0972DD7EBAA9A3C`、`native095-edge-web.png` SHA-256 `45FA2A0412C4AF007CDE6E2C274DEE1A79D33F63CD53FC5A23CE425ED509CABE`。
+- 最终串行 Gradle 门禁 PASS：982/982 JVM、0 failures/errors/skips，两个源码边界、APK、Lint 与 AndroidTest Kotlin 编译通过。APK SHA-256 `39A89C98A0789963EFABCD8DC13106D55859ADCBB24378B10D11920ACA91D634`；唯一默认包 10 个文件、411738 bytes，源码和 APK 内包 SHA-256 均为 `7AA3700A0D1E1CE1F19943CE012595E55A933B8D75FBFDBE306987537CDFE3EC`。
+
+此补充证明边缘点位命中这一窄切片，不证明整个 Timeline、其他页面或全产品视觉等价。Web 与 Native 语义框具体尺寸差异、标题/框外布局、其余页面状态仍需逐项记录；Product Cutover 继续 HOLD。

@@ -131,7 +131,8 @@ async function doubleTapTimelineAxis(frame){
       const left=document.querySelector("#timelineLeft"),right=document.querySelector("#timelineRight");
       return {
         oneMinute:activity(101),normal:activity(103),long:activity(102),longTitle:activity(105),
-        alarm:point(201),exactDeadline:point(202),
+        alarm:point(201),exactDeadline:point(202),edgeAlarm:point(400),edgeDeadline:point(401),
+        farEdgeRendered:!!event(402),
         dateDeadline:{text:document.querySelector("#dateDeadlineBar .dateDeadline")?.textContent,
           aria:document.querySelector("#dateDeadlineBar .dateDeadline")?.getAttribute("aria-label"),
           date:document.querySelector("#dateDeadlineBar .dateDeadline")?.dataset.deadlineDate,
@@ -249,6 +250,17 @@ async function doubleTapTimelineAxis(frame){
     assert.ok(Math.abs(geometry.exactDeadline.button.y+geometry.exactDeadline.button.height-
       (geometry.exactDeadline.line.y+geometry.exactDeadline.line.height/2))<1.1,
       "Native DEADLINE hit target ends at its marker after extending above it");
+    for(const edge of [geometry.edgeAlarm,geometry.edgeDeadline]){
+      const intersects=edge.button.y<edge.surfaceY+edge.surfaceHeight&&
+        edge.button.y+edge.button.height>edge.surfaceY;
+      assert.ok(intersects,"A Native viewport-edge point target keeps its visible hit sliver");
+    }
+    assert.ok(geometry.edgeAlarm.line.y+geometry.edgeAlarm.line.height/2<geometry.edgeAlarm.surfaceY,
+      "Edge ALARM marker is just above the viewport");
+    assert.ok(geometry.edgeDeadline.line.y>geometry.edgeDeadline.surfaceY+geometry.edgeDeadline.surfaceHeight,
+      "Edge DEADLINE marker is just below the viewport");
+    assert.equal(geometry.farEdgeRendered,false,
+      "A point farther than Native's 80 physical-pixel margin stays outside the rendered hit targets");
     assert.ok(geometry.dateDeadline.text.includes("2026-10-22")&&
       geometry.dateDeadline.text.includes("无具体时刻"));
     assert.equal(geometry.dateDeadline.date,"2026-10-22");
@@ -390,7 +402,7 @@ async function doubleTapTimelineAxis(frame){
         timeRange:document.querySelector("#timeRangeLabel").textContent}));
       console.error("Title state after Today",JSON.stringify(actual));throw error;
     });
-    assert.equal(geometry.events.length,28,"All mock events, including the date Deadline, remain present");
+    assert.equal(geometry.events.length,30,"All mock events, including edge points and date Deadline, remain present");
     for(const event of geometry.events){
       assert.ok(event.aria&&event.title&&event.aria.includes(event.title),
         "Every complete event title remains in Accessibility");

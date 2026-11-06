@@ -175,6 +175,42 @@ class WebSkinHostProjectionTest {
         assertFalse(noRecords.getBoolean("hasRecords"))
     }
 
+    @Test fun timedPointProjectionRetainsNativeViewportEdgeCandidatesOnly() {
+        val visibleStart = noon - 12L * 60 * 60 * 1000
+        val visibleEnd = noon + 12L * 60 * 60 * 1000
+        val alarmBefore = TemporalRecord(
+            eventSeq = 71, revision = 1, kind = TemporalKind.ALARM,
+            title = "edge-alarm", startMillis = visibleStart - 60_000,
+            zoneId = zone.id
+        )
+        val deadlineAfter = TemporalRecord(
+            eventSeq = 72, revision = 1, kind = TemporalKind.DEADLINE,
+            title = "edge-deadline", deadlineMillis = visibleEnd + 60_000,
+            zoneId = zone.id
+        )
+        val activityBefore = activity(73, visibleStart - 2 * 60 * 60 * 1000).copy(
+            endMillis = visibleStart - 60 * 60 * 1000
+        )
+        val dateDeadlineAfter = TemporalRecord(
+            eventSeq = 74, revision = 1, kind = TemporalKind.DEADLINE,
+            title = "date-deadline-after", deadlineDate = "2026-10-24", zoneId = zone.id
+        )
+        val farAlarm = TemporalRecord(
+            eventSeq = 75, revision = 1, kind = TemporalKind.ALARM,
+            title = "outside-query-window", startMillis = noon + 10L * 24 * 60 * 60 * 1000,
+            zoneId = zone.id
+        )
+
+        val payload = project(listOf(alarmBefore, deadlineAfter, activityBefore, dateDeadlineAfter, farAlarm))
+        val rows = payload.getJSONArray("items")
+        val ids = (0 until rows.length()).map { rows.getJSONObject(it).getLong("eventSeq") }.toSet()
+
+        assertEquals(setOf(71L, 72L), ids)
+        assertFalse(payload.getBoolean("hasVisibleDateOnlyDeadlines"))
+        assertEquals("ALARM", rows.getJSONObject(0).getString("kind"))
+        assertEquals("DEADLINE", rows.getJSONObject(1).getString("kind"))
+    }
+
     @Test fun projectsEventKindsWithoutOwningPresentationSide() {
         val deadline = TemporalRecord(
             eventSeq = 21, revision = 1, kind = TemporalKind.DEADLINE,
