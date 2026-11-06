@@ -466,6 +466,8 @@ Web 双翼之前贴到视口最外缘；冻结参考布局左右两翼分别从 
 
 仪器截图和日志见 `.local/android-test/reports/native095-timeline-wings-20261106/manifest.md`。**本切片的 Native 截图来自仪器 Native Compose 参考路径，未直接在原始冻结 APK 进程中运行同夹具。**因此只签核此处量测到的双翼边界、滚动范围与独立手势；不据此宣称整屏、卡片视觉或原始 APK 运行等价。整屏截图仍可见测试壳/系统栏差异。Timeline 整页继续 `PARTIAL`，其它页面和状态仍按差异清单逐项推进；Product Cutover `HOLD`。
 
+代码与仪器断言提交：`f55140a2697befe483188c88052d1c5b4c8c22b4`（`fix(皮肤): 对齐原生时间轴双翼边界与滚动`）。
+
 ## 2026-11-06 后续：Month agenda 摘要/序号颜色与 Material 文字参数（窄切片 PASS）
 
 冻结 Native `NativeSkinThemeDefaults.lightScheme.onSurface` 为 `#11151C`；`MonthScreen.kt` 事件卡片标题、摘要、序号分别采用 Material `titleMedium`、`bodyMedium`、`labelSmall`。旧 Web 摘要和序号误用浅色变体，且漏掉字距/序号字重。提交 `1ffd87499c8d6d6089eb1c158178d6c39f1e9bf5` 更新 `native-095.css`：标题 `16px/500/24px/.15px`；摘要 `#11151C`、`14px/400/20px/.25px`；序号 `#11151C`、`11px/500/16px/.5px`。测试断言位于 `NativeClearMonthOccurrenceParityInstrumentedTest.kt`。

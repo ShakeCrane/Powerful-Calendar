@@ -1,6 +1,7 @@
 # PC-ISSUE-SEPARATION-NATIVE-TIMELINE-WINGS-20261106
 
 **状态：PASS（双翼边界与独立水平滚动窄切片；冻结原始 APK 直接对照尚未完成）**
+**代码提交：** `f55140a2697befe483188c88052d1c5b4c8c22b4`
 **日期：**2026-11-06
 
 ## 冻结参照与差异
