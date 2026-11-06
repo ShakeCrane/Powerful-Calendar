@@ -8,23 +8,23 @@ OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: 141d18ca8f50cadeaef3b7ddb920ec51e827b720 (Native 0.9.5 AI action-menu narrow parity slice)
-LATEST_VERIFIED_HEAD: 141d18ca8f50cadeaef3b7ddb920ec51e827b720 (serial Gradle gate PASS; 987 JVM XML results with zero failures/errors/skips; targeted API 35 WebView test 1/1 PASS)
+LATEST_CODE_HEAD: a767c2f20cbc360d8e178fc99e2bbc053b099c0e (Clear ordinary Native Tools route removed)
+LATEST_VERIFIED_HEAD: a767c2f20cbc360d8e178fc99e2bbc053b099c0e (serial Gradle gate PASS; 987 JVM tests, zero failures/errors/skips; API 35 route + recovery instrumentation 3/3; package verifier PASS)
 CURRENT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
 TASK_STATUS: IN_PROGRESS
 PRODUCT_CUTOVER: HOLD
 TASK_BASE_HEAD: e129d2defa4af5fe30c7729402cd5d04d35b3370
-WORKING_APK_SHA256: F3EB40CA90C732137F820C4F8843217C990AC9672F6843EC68F3D1EDDE5105D7
-WORKING_DEFAULT_SKIN_SHA256: 1B05DA65418D5C0C24273F369C54B95EE59D1DCC0CFBA32A3FFD6E80D5478F11
+WORKING_APK_SHA256: B41DCD08421B4BE91D40FC0B205945BCEB0D3884B0DD4F38C8D80B8C505F9A6C
+WORKING_DEFAULT_SKIN_SHA256: 88EA98745669139BD4C454B4E23C1555CD29450DE3469E906D11DF99124F8A50
 WORKING_DEFAULT_SKIN_ID: powercal-clear-default
 NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; implementation and full parity remain IN PROGRESS)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
-LAST_COMPLETED_TASK: Native 0.9.5 AI message-action menu geometry/style/touch (narrow PASS; AI page remains PARTIAL)
-LAST_COMPLETED_COMMIT: 141d18ca8f50cadeaef3b7ddb920ec51e827b720
-LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; see audit and latest Android evidence)
-LAST_ATTEMPTED_COMMIT: 141d18ca8f50cadeaef3b7ddb920ec51e827b720 (AI action menu verified; broader Native visual parity remains IN_PROGRESS)
+LAST_COMPLETED_TASK: Close ordinary Native Tools route from default Web Settings (narrow PASS; Settings parity remains PARTIAL)
+LAST_COMPLETED_COMMIT: a767c2f20cbc360d8e178fc99e2bbc053b099c0e
+LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; Settings visual comparison still open)
+LAST_ATTEMPTED_COMMIT: a767c2f20cbc360d8e178fc99e2bbc053b099c0e (ordinary Web route closed; independent recovery retained)
 NEXT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
-NEXT_ACTION: Remove the ordinary Web Settings route to NativeToolsPage only after confirming its Web/Host replacements; keep MainActivity nativeRecoverySignal as the independent recovery entry. Add tests that ordinary Skin actions cannot open NativeToolsPage and that recovery remains reachable; perform the route test on an identity-verified isolated API 35 AVD. The Settings route audit is static; visual/touch equivalence remains NOT TESTED.
+NEXT_ACTION: Pair the frozen Native 0.9.5 Settings page with current WebView on an identity-verified isolated API 35 AVD. Capture section order, visible states, component geometry, focus/scroll and real taps; omit the Owner-retired skin catalogue and preserve formal Host actions plus independent Native recovery. Use this evidence to implement one bounded Settings parity slice.
 LATEST_SLICE_EVIDENCE:
   NATIVE_095_AI_MESSAGE_MENU:
     status: NARROW PASS (user menu screenshot geometry/style; user and assistant DOM/menu assertions; full AI page remains PARTIAL)
@@ -38,11 +38,15 @@ LATEST_SLICE_EVIDENCE:
     evidence: .local/android-test/reports/native095-ai-menu-20261107/manifest.md; docs/issues/PC-ISSUE-SEPARATION-NATIVE-AI-MENU-20261107.md
     residuals: menu near viewport edge, separate Native screenshot of assistant menu, AI proposal/attachment/error states, dark screenshot and focus traversal NOT TESTED; Product Cutover HOLD
   NATIVE_SETTINGS_ROUTE_AUDIT:
-    status: CONFIRMED by static call paths; device verification NOT TESTED
-    finding: index.html ordinary Settings button sends nativeSettings -> WebSkinHost action decoder -> PowerCalApp Page.TOOLS -> NativeToolsPage; MainActivity nativeRecoverySignal is a separate recovery route
-    replacement_paths: Web settings already contains formal reminder/permission, import-export, profile and protected AI Host actions
-    evidence: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (Settings row); precise symbols/lines listed there
-    next: close ordinary Skin route after regression coverage; preserve the independent MainActivity recovery path
+    status: CLOSED (ordinary route removed; Native recovery remains separate); Settings visual comparison NOT TESTED
+    finding: Clear no longer renders the nativeSettings action; WebSkinHost decoder rejects it and PowerCalApp has no ordinary Page.TOOLS branch for it
+    recovery_route: MainActivity nativeRecoverySignal remains; Android dirty-editor checkpoint/recovery instrumentation passed 1/1
+    replacement_paths: Web reminder/permission, ICS/system-calendar, backup, profile, and protected AI Host actions remain present
+    tests: Android route/settings and recovery/profile tests 3/3; full serial Gradle gate 987/987 JVM; official package verification PASS
+    apk_sha256: B41DCD08421B4BE91D40FC0B205945BCEB0D3884B0DD4F38C8D80B8C505F9A6C
+    default_skin_sha256: 88ea98745669139bd4c454b4e23c1555cd29450de3469e906d11df99124f8a50 (one powercal-clear-default package; source/APK bytes identical)
+    evidence: .local/android-test/reports/native-settings-route-20261107/manifest.md; docs/issues/PC-ISSUE-SEPARATION-NATIVE-TOOLS-ROUTE-20261107.md
+    next: perform paired frozen-Native/current-Web Settings screenshots and real operation comparison; visual parity remains PARTIAL
 LAST_TASK_EVIDENCE:
   NATIVE_095_AI_INPUT_LIMIT:
     status: PASS (6000-code-unit composer boundary only; AI page and overall Native parity remain PARTIAL)

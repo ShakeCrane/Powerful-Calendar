@@ -2858,3 +2858,12 @@ API 35 emulator-5570 真实触控 Native Compose 与打包 Clear WebView 的无 
 - Debug APK SHA-256 `F3EB40CA90C732137F820C4F8843217C990AC9672F6843EC68F3D1EDDE5105D7`；唯一 `powercal-clear-default.pcskin` 10 文件、413166 bytes，源码/APK SHA-256 `1B05DA65418D5C0C24273F369C54B95EE59D1DCC0CFBA32A3FFD6E80D5478F11`。Native/Web 截图哈希、运行命令与范围限制见 `.local/android-test/reports/native095-ai-menu-20261107/manifest.md`；Issue `docs/issues/PC-ISSUE-SEPARATION-NATIVE-AI-MENU-20261107.md`。
 - 当前可见 AI 业务整体、提案/附件/错误状态、暗色截图、输入法/焦点遍历和其他原生页面仍未完成对照；Native 恢复、Core/Host 业务语义和唯一默认包身份未变；Product Cutover 继续 HOLD。
 - 同步全页面路由审计发现：Web Settings 仍有普通可见按钮经 `nativeSettings` 打开 `NativeToolsPage`；Web 已有相应设置/API 路径。此普通 Native 路由须与独立 `nativeRecoverySignal` 区分；未完成入口移除及 Android 回归前保持 Native Tools 可用，不能直接删代码。来源与精确路径已记入视觉审计；该路由状态尚无真实同设备页面验证。
+
+## 2026-11-07 默认设置普通 Native 路由关闭（窄范围 PASS）
+
+- 代码提交：`a767c2f20cbc360d8e178fc99e2bbc053b099c0e`（`refactor(skin): 移除默认设置中的普通 Native 工具入口`）。Clear Settings 不再显示普通 Native Tools 入口，Web action allowlist 和 PowerCalApp 日常路由均拒绝 `nativeSettings`；MainActivity `nativeRecoverySignal`、Native Tools、Host 系统操作不删。
+- API 35 隔离 AVD `PowerCal_Wave2_QA35_20261104` / `emulator-5556`：路由/Settings 回归、Host 资料路径和 Native recovery 脏编辑器检查点各 1/1 PASS；测试后选中皮肤为 `powercal-clear-default`。未清应用数据、未操作系统日历。
+- 完整串行 Gradle gate PASS；142 XML suites / 987 JVM tests / 0 failures/errors/skips；源码边界、APK、Lint、AndroidTest 编译/组装 PASS。Clear 默认分发 Python 5/5、受影响 Node syntax 与三个 Browser E2E PASS；官方包校验仅一个默认 `.pcskin`，源/APK SHA 完全一致。
+- APK SHA `B41DCD08421B4BE91D40FC0B205945BCEB0D3884B0DD4F38C8D80B8C505F9A6C`；Skin SHA `88ea98745669139bd4c454b4e23c1555cd29450de3469e906d11df99124f8a50`。证据 `.local/android-test/reports/native-settings-route-20261107/manifest.md`；Issue `docs/issues/PC-ISSUE-SEPARATION-NATIVE-TOOLS-ROUTE-20261107.md`。
+- 首轮 Browser action 等待与旧路由断言失败已保留，修正测试握手等待/期望后最终通过。Chrome/Studio Mock 不代表 Android 权限 UI 验收。未重新进行 Native/Web Settings 配对截图；视觉和页面完整交互仍 PARTIAL/NOT TESTED。Native 恢复保持可达，Product Cutover `HOLD`。
+- 唯一下一动作：在隔离 API 35 上用冻结 Native 0.9.5 Settings 与当前 WebView 截图/操作配对比较，跳过 Owner 已退役的皮肤目录并保留 Host 操作和独立恢复。
