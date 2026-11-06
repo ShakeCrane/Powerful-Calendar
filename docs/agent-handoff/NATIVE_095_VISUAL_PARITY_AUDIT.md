@@ -503,3 +503,32 @@ Web 双翼之前贴到视口最外缘；冻结参考布局左右两翼分别从 
 Timeline 整页仍 `PARTIAL`：本切片没有签核 ALARM 左翼、所有事件类型/状态、深色/大字体、重复实例及所有滚动组合。接续动作是以同一多事件夹具核对双翼滚动与定位，再按页面继续移植；产品 Cutover 保持 `HOLD`。问题记录见 `docs/issues/PC-ISSUE-SEPARATION-NATIVE-TIMELINE-OUTSIDE-TITLE-GREEDY-FOLDING-20261106.md`。
 
 代码和证据提交：`23d6d648b06155caa412a4a5d47b9cc4d9722667` (`fix(皮肤): 对齐原生时间轴框外标题与贪心折叠`)。
+
+## 2026-11-06 Timeline 日期级 Deadline 空态与 Android 15 顶部 inset（两个窄切片 PASS）
+
+冻结基准仍为 Native 0.9.5-rc.1 源码 `b1f7629f0c52812e1887443872f43aa6c49908c4`，原始 APK SHA-256 `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`。
+
+### 日期级 Deadline 空态
+
+冻结 `NativeTimelineScreen.kt` 会为查询范围内、但不在当前 Camera 可见日期中的日期级 Deadline 保留 64dp 高的日期带，并在其中显示“可见日期内没有日期级截止”；Timeline 的“还没有事件”另按整个查询是否有记录判断。旧 Web v3 只看当前可见 `items`，因此遗漏日期带，并可能把离开当前 Camera 的已有事件误报成无事件。
+
+`WebSkinTimelineProjection` 现在将 `hasRecords`、`hasDateOnlyDeadlines`、`hasVisibleDateOnlyDeadlines` 和实际系统字体比例作为 Host 展示状态传入；这些字段只投影已有记录，不引入 Skin 业务规则。Web v3 复现 Native 的空日期带、文案、居中位置及字体缩放，并按 Host 的查询级 `hasRecords` 隐藏错误的空 Timeline 提示。通过 `build_default_clear.py` 正式重建唯一包。
+
+在隔离 API 35 AVD `PowerCal_Wave2_QA35_20261104` / `emulator-5556` 上，`TimelineDragWebViewInstrumentedTest#nativeAndClearMatchTheEmptyDateOnlyDeadlineBand` 为 `1/1 PASS`。Native 与 Web 使用同一隔离 Store 夹具；WebView 实测空日期带高 64 CSS px、文字中心相对时间轴顶边 -32px、字体 12/16px；Host 标记“有记录/有日期 Deadline/当前无可见 Deadline”。两 Store 均只有夹具预置的一次提交，草稿数为 0，记录、revision 保持不变。真实 APK 参考主界面亦显示同一冻结空态文案，但该直接 APK 截图与 Web 主界面数据集不同；空态的数值几何签核来自本次 Native Compose/WebView 同夹具仪器对照，不冒称原始 APK 同数据库像素对照。
+
+### 顶部状态栏 inset
+
+直接截图曾显示 Web 品牌标题比冻结 Native 参考向上约 24dp。运行时测量确认：API 35 窗口实际 status-bar inset 为 128px，而静态 `status_bar_height_default` 资源为 63px；旧 `WebSkinRoot` 优先采用静态值，令 WebView 顶边停在 y=63px，冻结 Compose `statusBarsPadding()` 则使用实时窗口值。现在 `WebSkinRoot` 优先使用 `rootWindowInsets` 的实时 status-bar inset，静态资源只作不可用时回退；系统栏适配留在 Host，Skin 不需要写设备相关固定像素。
+
+同夹具仪器测试中，最终 WebView 顶边为 y=128px；Web 标题布局框屏幕 y=162.39px，Native Compose 标题框 y=153px，差 3.58dp，新增 4dp 回归断言通过。原始 APK 与新版实际 MainActivity 的直接截图分别为 `original-apk-main.png` 与 `current-mainactivity-after-inset-fix.png`：品牌标题墨迹 bbox 顶边均为 y=168px，Native 底边 y=198px、Web y=199px；日期副标题 bbox 分别 y=227..254 与 y=226..253。两次主界面截图来自不同 AVD/不同事件集合，只签核标题和副标题的实测竖向位置，不推断整屏逐像素一致。
+
+### 本轮证据与状态
+
+- 目标 AVD：`PowerCal_Wave2_QA35_20261104` / `emulator-5556`，API 35，1080×2400、420dpi，WebView 124.0.6367.219。原始 APK 参考 AVD：`PowerCal_Native095_OriginalVisual_20261106` / `emulator-5554`；未清除任一 AVD 的应用数据。
+- 串行门禁 `:app:verifySkinSourceBoundary :app:verifyNativeSkinBoundary :app:testDebugUnitTest :app:assembleDebug :app:lintDebug :app:compileDebugAndroidTestKotlin :app:assembleDebugAndroidTest --offline --no-daemon --max-workers=1 --no-parallel --console=plain`：PASS；141 个 JVM XML、977/977、0 failures/errors/skips；两项源码边界、APK、Lint、AndroidTest 编译/组装通过。编译有一条既有 `WebSkinHost.kt` `WebSettings.databaseEnabled` deprecation warning，与本改动无关。
+- `node --check tools/skin-studio/default-clear/source/web/app.js`、单一分发测试 2/2、`build_default_clear.py --verify --apk`：PASS。包 ID `powercal-clear-default`；10 个文件、410938 bytes；源包与 APK 资源 SHA-256 均为 `a60e791b35d8793082fd944974b6a05cc45a6d1b8040af8ff891a5985458f964`。Debug APK SHA-256 `254d2ff1a8e4da4ebb3af4cbbffd68f9a2f3c13ff92fdf57cbd2ac3f509683de`，安装后的 `base.apk` 哈希一致。
+- 原始 APK 主界面截图 SHA-256 `eb9caf210e077c041ef226908c13d193877dd39917225b0f8ef1000b7ba7264f`；更新后 MainActivity 截图 SHA-256 `35f8b1847ceddf66e188dd36604a678c449b5ff338c92e855252e42c58edfa42`；同夹具 Native Compose / WebView 空态截图 SHA-256 分别为 `0db39a9c59c6cfe79dc15054754e40465febc993de305a5c70da4a6700ece227` / `ba62f3b8819d5ab04aa8c87afcb40f4874fddac8073b99ae5b3eacd20cddc79c`。
+- Studio Python 全套此前一轮为 86/89；3 个失败项是 `test_full_route_registry_has_one_restore`、`test_privacy_editors_remain_host_owned_but_placeable`、`test_native_settings_and_hidden_activity_rescue_are_both_available`。这是早于最终字体比例微调的一次套件运行，本轮未重跑，故不将其记为最终 PASS，也不在本任务修复这些独立源码形状断言。Studio Bridge E2E 的此前 PASS 同样不是本次 Android 主门禁。
+- 完整命令与 Gradle 输出位于 `.local/android-test/reports/native095-empty-date-band-20261106/full-gradle-gate-final.log`；截图与安装 APK 亦在同一证据目录。此前 ADB AVD 名检查脚本把额外的 `OK` 回执并入名称，安全地在安装前退出；修正为只解析 AVD 名行后，目标 AVD/API 核验及 APK 更新/仪器测试均成功。
+
+本轮只关闭**日期级 Deadline 空带/查询级空事件提示**和**API 35 顶部 inset**两个窄差异。Timeline 整页及其余原生页面仍为 `PARTIAL/IN_PROGRESS`；活动卡、所有事件种类、深色/大字体、页面交互及其它系统状态继续按差异清单移植。Native 安全恢复、Core 语义、皮肤 ID 和唯一工厂包数量未变；Product Cutover 继续 `HOLD`。独立问题记录：`PC-ISSUE-SEPARATION-NATIVE-TIMELINE-EMPTY-DATE-BAND-20261106.md`、`PC-ISSUE-SEPARATION-NATIVE-SHELL-STATUS-INSET-20261106.md`。

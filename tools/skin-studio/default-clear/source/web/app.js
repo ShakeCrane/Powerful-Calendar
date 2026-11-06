@@ -820,6 +820,10 @@ function renderTimeline(){
   const previousRightOverflow=right.scrollWidth>right.clientWidth+1;
   for(const el of [labels,leftLanes,rightLanes,now,dates])el.replaceChildren();
   dates.hidden=true;
+  dates.classList.remove("is-empty");
+  dates.style.removeProperty("--date-deadline-empty-height");
+  dates.style.removeProperty("--date-deadline-empty-font-size");
+  dates.style.removeProperty("--date-deadline-empty-line-height");
   if(!t){$("timeRangeLabel").textContent="尚无宿主数据";$("timelineEmpty").hidden=false;return}
   $("timeRangeLabel").textContent=t.hours+" 小时 / 屏";
   const from=Number(t.visibleStartMillis),to=Number(t.visibleEndMillis),span=Math.max(1,to-from);
@@ -828,10 +832,12 @@ function renderTimeline(){
   const position=ms=>100*(ms-from)/span;
   const kindLabel={ACTIVITY:"活动",ALARM:"提醒",DEADLINE:"截止事项"};
   const items=Array.isArray(t.items)?t.items:[];
-  $("timelineEmpty").hidden=items.length!==0;
+  $("timelineEmpty").hidden=t.hasRecords===true||items.length!==0;
   const isDateOnlyDeadline=item=>String(item.kind).toUpperCase()==="DEADLINE"&&
     typeof item.deadlineDate==="string"&&/^\d{4}-\d{2}-\d{2}$/.test(item.deadlineDate);
   const dateItems=items.filter(isDateOnlyDeadline);
+  const hasDateOnlyDeadlines=t.hasDateOnlyDeadlines===true;
+  const hasVisibleDateOnlyDeadlines=t.hasVisibleDateOnlyDeadlines===true;
   const makeEventButton=(item,kind,ariaLabel)=>{
     const button=node("button","tEvent "+kind);
     button.type="button";button.dataset.action="openEvent";
@@ -875,6 +881,17 @@ function renderTimeline(){
       button.append(flag,content);
       attachTimelineDrag(button,item,axis);
       dates.append(button);
+    }
+  }else if(hasDateOnlyDeadlines){
+    dates.hidden=false;
+    if(!hasVisibleDateOnlyDeadlines){
+      const scale=Number(t.systemFontScale);
+      const fontScale=Number.isFinite(scale)&&scale>0?scale:1;
+      dates.classList.add("is-empty");
+      dates.style.setProperty("--date-deadline-empty-height",`${64*fontScale}px`);
+      dates.style.setProperty("--date-deadline-empty-font-size",`${12*fontScale}px`);
+      dates.style.setProperty("--date-deadline-empty-line-height",`${16*fontScale}px`);
+      dates.append(node("span","dateDeadlineEmpty","可见日期内没有日期级截止"));
     }
   }
   // Showing date-only deadlines changes the flex space available to the true-time

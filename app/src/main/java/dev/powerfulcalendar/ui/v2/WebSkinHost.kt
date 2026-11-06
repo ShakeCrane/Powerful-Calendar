@@ -312,14 +312,15 @@ internal fun WebSkinRoot(
         )
         val resourceHeight = statusBarId.takeIf { it != 0 }
             ?.let { rootView.resources.getDimensionPixelSize(it) } ?: 0
-        val topInsetPx = resourceHeight.takeIf { it > 0 } ?: if (
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
-        ) {
+        val windowInsetHeight = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             platformInsets?.getInsets(WindowInsets.Type.statusBars())?.top ?: 0
         } else {
             @Suppress("DEPRECATION")
             platformInsets?.systemWindowInsetTop ?: 0
         }
+        // The runtime window inset can differ from the static status-bar resource under
+        // edge-to-edge. Match Compose's statusBarsPadding() value whenever the window reports it.
+        val topInsetPx = windowInsetHeight.takeIf { it > 0 } ?: resourceHeight
         with(density) { topInsetPx.toDp() }
     }
     var failed by remember(bundle) { mutableStateOf(false) }
@@ -333,8 +334,6 @@ internal fun WebSkinRoot(
     }
     Box(modifier) {
         if (!failed) SecureWebSkin(
-            // Prefer the visible default bar height; status_bar_height can include extra
-            // edge-to-edge spacing on modern Android windows.
             bundle,
             Modifier.fillMaxSize().padding(top = topSystemInset).navigationBarsPadding(),
             onFailure = reportFailure

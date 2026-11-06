@@ -23,11 +23,14 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.core.view.WindowInsetsCompat
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.powerfulcalendar.core.DraftForm
@@ -1042,6 +1045,209 @@ class TimelineDragWebViewInstrumentedTest {
             println("NATIVE_CLEAR_DATE_DEADLINE_DRAG eventSeq=$eventSeq date=$sourceDate " +
                 "target=$expectedDate native=${nativeDraft.form.endText} clear=${clearDraft.form.endText} " +
                 "nativeViewportPx=$nativeHeight clearViewportCss=$clearHeightCss touch=$touch")
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            nativeStore.close()
+            clearStore.close()
+            nativeContext.deleteDatabase(nativeDatabase)
+            clearContext.deleteDatabase(clearDatabase)
+            listOf(nativeNamespace, clearNamespace).forEach { namespace ->
+                listOf("powercal-onboarding", "powercal-skin-choice", "powercal-skin-registry",
+                    "powercal-ui", "powercal-profile", "powercal-ai", "powercal-file-ai-consent")
+                    .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+                File(storage.cacheDir, namespace).deleteRecursively()
+            }
+        }
+    }
+
+    @Test
+    fun nativeAndClearMatchTheEmptyDateOnlyDeadlineBand() {
+        val storage = compose.activity.applicationContext
+        val nativeNamespace = "pc-date-deadline-empty-native-" + UUID.randomUUID()
+        val clearNamespace = "pc-date-deadline-empty-clear-" + UUID.randomUUID()
+        val nativeContext = IsolatedAppContext(compose.activity, storage, nativeNamespace)
+        val clearContext = IsolatedAppContext(compose.activity, storage, clearNamespace)
+        val nativeDatabase = "timeline-date-empty.db"
+        val clearDatabase = "timeline-date-empty.db"
+        val nativeStore = PowerStore(nativeContext, nativeDatabase)
+        val clearStore = PowerStore(clearContext, clearDatabase)
+        var web: WebView? = null
+        try {
+            val zone = ZoneId.systemDefault()
+            val today = LocalDate.now(zone)
+            val dueDate = today.plusDays(4)
+            val form = DraftForm(
+                kind = TemporalKind.DEADLINE,
+                title = "NATIVE_095_EMPTY_DATE_BAND",
+                endText = dueDate.toString(),
+                zoneId = zone.id
+            )
+            val nativeCreated = nativeStore.createFormalEvent(
+                form, "native095-empty-date-band-seed") as PowerStore.CommitOutcome.Committed
+            val clearCreated = clearStore.createFormalEvent(
+                form, "native095-empty-date-band-seed") as PowerStore.CommitOutcome.Committed
+            assertEquals(nativeCreated.eventSeq, clearCreated.eventSeq)
+            val eventSeq = nativeCreated.eventSeq
+            val nativeRecord = requireNotNull(nativeStore.get(eventSeq))
+            val clearRecord = requireNotNull(clearStore.get(eventSeq))
+            assertEquals(nativeRecord.eventSeq, clearRecord.eventSeq)
+            assertEquals(nativeRecord.revision, clearRecord.revision)
+            assertEquals(nativeRecord.kind, clearRecord.kind)
+            assertEquals(nativeRecord.deadlineDate, clearRecord.deadlineDate)
+            assertEquals(nativeRecord.deadlineMillis, clearRecord.deadlineMillis)
+
+            nativeContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            PowerCalSkinRegistry.reset()
+            SkinPackageManager(nativeContext).selectNativeForEmergencyRecovery()
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides nativeContext) {
+                        PowerCalTheme { PowerCalApp(nativeStore) }
+                    }
+                }
+            }
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithContentDescription("今日 · 复位为全天")
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithContentDescription("今日 · 复位为全天").performClick()
+            val emptyBandLabel = "可见日期内没有日期级截止"
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText(emptyBandLabel).fetchSemanticsNodes().isNotEmpty()
+            }
+            val nativeTitleBounds = compose.onNodeWithText("Powerful Calendar")
+                .fetchSemanticsNode().boundsInRoot
+            val nativeRootLocation = IntArray(2)
+            compose.activity.findViewById<View>(android.R.id.content)
+                .getLocationOnScreen(nativeRootLocation)
+            val statusBarsInset = compose.activity.window.decorView.rootWindowInsets?.let {
+                WindowInsetsCompat.toWindowInsetsCompat(it)
+                    .getInsets(WindowInsetsCompat.Type.statusBars()).top
+            }
+            val nativeEmptyLabel = compose.onNodeWithText(emptyBandLabel).fetchSemanticsNode()
+            val nativeLabelBounds = nativeEmptyLabel.boundsInRoot
+            val nativeTimelineBounds = compose.onNodeWithTag("timeline-viewport")
+                .fetchSemanticsNode().boundsInRoot
+            assertTrue(compose.onAllNodesWithText("还没有事件 · 点击右上角 + 开始")
+                .fetchSemanticsNodes().isEmpty())
+            assertEquals(
+                "Native empty-date label is centered in the frozen 64dp strip",
+                -32f * compose.activity.resources.displayMetrics.density,
+                nativeLabelBounds.center.y - nativeTimelineBounds.top,
+                1.5f * compose.activity.resources.displayMetrics.density
+            )
+            val nativeTimelineScreenshot = File(storage.cacheDir,
+                "native095-empty-date-band-native.png")
+            saveWindowScreenshot(nativeTimelineScreenshot)
+
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            clearContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            PowerCalSkinRegistry.reset()
+            SkinPackageManager(clearContext).select("powercal-clear-default")
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides clearContext) {
+                        PowerCalTheme { PowerCalApp(clearStore) }
+                    }
+                }
+            }
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val view = requireNotNull(web)
+            awaitJs(view, "!!window.PowerCalSkin && !!document.querySelector('#timelineSurface')")
+            evaluate(view, "document.querySelector('[data-action=\"today\"]').click();true")
+            compose.waitUntil(15_000) {
+                val timeline = hostState().optJSONObject("timeline")
+                timeline?.optBoolean("hasDateOnlyDeadlines") == true &&
+                    timeline.optBoolean("hasVisibleDateOnlyDeadlines") == false
+            }
+            val webProbe = evaluateObject(view, """
+                (()=>{
+                  const title=document.querySelector('.brand-title').getBoundingClientRect();
+                  const band=document.querySelector('#dateDeadlineBar');
+                  const label=band?.querySelector('.dateDeadlineEmpty');
+                  const axis=document.querySelector('#axisScroll');
+                  const bandRect=band.getBoundingClientRect();
+                  const labelRect=label.getBoundingClientRect();
+                  const axisRect=axis.getBoundingClientRect();
+                  const labelStyle=getComputedStyle(label);
+                  return {
+                    titleTop:title.top,
+                    hidden:band.hidden,
+                    empty:band.classList.contains('is-empty'),
+                    text:label.textContent,
+                    timelineEmptyHidden:document.querySelector('#timelineEmpty').hidden,
+                    height:bandRect.height,
+                    labelCenterOffset:labelRect.top+labelRect.height/2-axisRect.top,
+                    fontSize:labelStyle.fontSize,
+                    lineHeight:labelStyle.lineHeight,
+                    items:band.querySelectorAll('.dateDeadline').length,
+                    hasFlagChip:!!band.querySelector('.dateDeadline')
+                  };
+                })()
+            """.trimIndent())
+            val webViewLocation = IntArray(2)
+            view.getLocationOnScreen(webViewLocation)
+            val webTitleScreenY = webViewLocation[1] +
+                webProbe.getDouble("titleTop") * view.resources.displayMetrics.density
+            val titleTopDeltaDp = kotlin.math.abs(
+                nativeTitleBounds.top.toDouble() - webTitleScreenY
+            ) / view.resources.displayMetrics.density
+            assertTrue(
+                "WebView title top must match the Native Compose baseline within 4dp; " +
+                    "native=${nativeTitleBounds.top}px web=$webTitleScreenY px " +
+                    "statusInset=$statusBarsInset px delta=$titleTopDeltaDp dp",
+                titleTopDeltaDp <= 4.0
+            )
+            assertFalse("Web strip remains visible for an in-window date-only record", webProbe.getBoolean("hidden"))
+            assertTrue(webProbe.getBoolean("empty"))
+            assertEquals(emptyBandLabel, webProbe.getString("text"))
+            assertTrue("Web uses the Native query-level hasRecords empty-state rule",
+                webProbe.getBoolean("timelineEmptyHidden"))
+            assertEquals("Web empty strip matches Native's fixed 64dp row", 64.0,
+                webProbe.getDouble("height"), 0.75)
+            assertEquals("Web label is centered in the same strip position as Native", -32.0,
+                webProbe.getDouble("labelCenterOffset"), 0.75)
+            assertEquals("12px", webProbe.getString("fontSize"))
+            assertEquals("16px", webProbe.getString("lineHeight"))
+            assertEquals(0, webProbe.getInt("items"))
+            assertFalse(webProbe.getBoolean("hasFlagChip"))
+            val timeline = hostState().getJSONObject("timeline")
+            assertTrue(timeline.getBoolean("hasDateOnlyDeadlines"))
+            assertFalse(timeline.getBoolean("hasVisibleDateOnlyDeadlines"))
+            assertEquals(1.0, timeline.getDouble("systemFontScale"), 0.01)
+
+            val webTimelineScreenshot = File(storage.cacheDir,
+                "native095-empty-date-band-web.png")
+            saveWindowScreenshot(webTimelineScreenshot)
+            assertEquals("Presentation must not create Store writes", 1L, nativeStore.commitCount())
+            assertEquals(nativeStore.commitCount(), clearStore.commitCount())
+            assertEquals(0, nativeStore.draftCount())
+            assertEquals(nativeStore.draftCount(), clearStore.draftCount())
+            assertEquals(nativeRecord, nativeStore.get(eventSeq))
+            assertEquals(clearRecord, clearStore.get(eventSeq))
+            println("NATIVE_095_EMPTY_DATE_BAND dueDate=$dueDate nativeLabelBounds=$nativeLabelBounds " +
+                "nativeTimelineBounds=$nativeTimelineBounds web=$webProbe " +
+                "nativeTitleBounds=$nativeTitleBounds nativeRootY=${nativeRootLocation[1]} " +
+                "statusBarsInset=$statusBarsInset webViewY=${webViewLocation[1]} " +
+                "webTitleScreenY=$webTitleScreenY titleTopDeltaDp=$titleTopDeltaDp " +
+                "nativeScreenshot=${nativeTimelineScreenshot.absolutePath} " +
+                "webScreenshot=${webTimelineScreenshot.absolutePath} " +
+                "commits=${nativeStore.commitCount()}")
         } finally {
             compose.runOnUiThread {
                 compose.activity.setContent { }

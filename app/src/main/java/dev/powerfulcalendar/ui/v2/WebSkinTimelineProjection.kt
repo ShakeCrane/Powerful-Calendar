@@ -27,7 +27,8 @@ internal object WebSkinTimelineProjection {
         camera: TimelineCoordinate.Camera,
         nowMillis: Long,
         zone: ZoneId,
-        recurrenceFeatures: RecurrenceFeatureApiV1
+        recurrenceFeatures: RecurrenceFeatureApiV1,
+        systemFontScale: Float = 1f
     ): JSONObject {
         val hours = TimelineCoordinate.clampHours(camera.hours)
         val halfSpan = (TimelineCoordinate.spanMillis(hours) / 2).toLong()
@@ -86,6 +87,10 @@ internal object WebSkinTimelineProjection {
             .put("zoneId", zone.id)
             .put("anchorMillis", camera.anchorMillis)
             .put("hours", hours)
+            .put("systemFontScale", systemFontScale.takeIf { it.isFinite() && it > 0f } ?: 1f)
+            .put("hasRecords", records.isNotEmpty())
+            .put("hasDateOnlyDeadlines", records.any { it.isDateOnlyDeadline() })
+            .put("hasVisibleDateOnlyDeadlines", overlapping.any { it.record.isDateOnlyDeadline() })
             .put("visibleStartMillis", visibleStart)
             .put("visibleEndMillis", visibleEnd)
             .put("nowMillis", nowMillis)

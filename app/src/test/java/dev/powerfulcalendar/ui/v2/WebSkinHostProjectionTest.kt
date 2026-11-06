@@ -122,6 +122,9 @@ class WebSkinHostProjectionTest {
 
     @Test fun exposesTrueIntervalsOwnerRevisionAndNoPrivilegedContent() {
         val payload = project(listOf(activity(7)))
+        assertTrue(payload.getBoolean("hasRecords"))
+        assertFalse(payload.getBoolean("hasDateOnlyDeadlines"))
+        assertFalse(payload.getBoolean("hasVisibleDateOnlyDeadlines"))
         val row = payload.getJSONArray("items").getJSONObject(0)
         assertEquals(7L, row.getLong("eventSeq"))
         assertEquals(2L, row.getLong("revision"))
@@ -135,6 +138,31 @@ class WebSkinHostProjectionTest {
         assertEquals(24.0, payload.getDouble("hours"), 0.0)
         assertEquals(zone.id, payload.getString("zoneId"))
         assertFalse(payload.toString().contains("private-note-should-not-leak"))
+    }
+
+    @Test fun dateOnlyDeadlineProjectionDistinguishesEmptyDateBandFromVisibleItems() {
+        val outsideCamera = TemporalRecord(
+            eventSeq = 61, revision = 1, kind = TemporalKind.DEADLINE,
+            title = "outside-visible-day", deadlineDate = "2026-10-26", zoneId = zone.id
+        )
+        val emptyBand = WebSkinTimelineProjection.build(
+            listOf(outsideCamera), TimelineCoordinate.Camera(noon, 24.0), noon,
+            zone, recurrenceFeatures, systemFontScale = 1.5f
+        )
+        assertTrue(emptyBand.getBoolean("hasRecords"))
+        assertTrue(emptyBand.getBoolean("hasDateOnlyDeadlines"))
+        assertFalse(emptyBand.getBoolean("hasVisibleDateOnlyDeadlines"))
+        assertEquals(0, emptyBand.getJSONArray("items").length())
+        assertEquals(1.5, emptyBand.getDouble("systemFontScale"), 0.0)
+
+        val insideCamera = outsideCamera.copy(deadlineDate = "2026-10-22")
+        val visibleBand = project(listOf(insideCamera))
+        assertTrue(visibleBand.getBoolean("hasDateOnlyDeadlines"))
+        assertTrue(visibleBand.getBoolean("hasVisibleDateOnlyDeadlines"))
+        assertEquals(1, visibleBand.getJSONArray("items").length())
+
+        val noRecords = project(emptyList())
+        assertFalse(noRecords.getBoolean("hasRecords"))
     }
 
     @Test fun projectsEventKindsWithoutOwningPresentationSide() {

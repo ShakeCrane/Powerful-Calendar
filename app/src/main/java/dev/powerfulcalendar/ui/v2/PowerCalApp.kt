@@ -58,6 +58,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -237,6 +238,7 @@ fun PowerCalApp(
     onNativeRecoveryHandled: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val systemFontScale = LocalDensity.current.fontScale
     val appContext = context.applicationContext
     val webAiBatchProgress by PowerCalStores.aiBatchProgress.progress.collectAsState()
     // Re-read on composition so sessions opened after a timezone change capture the current zone.
@@ -2520,7 +2522,7 @@ fun PowerCalApp(
                 .put("timeline", WebSkinTimelineProjection.build(
                     stateTimelineRecords,
                     stateCamera,
-                    nowMillis, zone, recurrenceFeatureApi))
+                    nowMillis, zone, recurrenceFeatureApi, systemFontScale))
                 .put("month", if (page == Page.MONTH.name)
                     WebSkinMonthProjection.build(
                         stateMonthRecords,
