@@ -670,4 +670,22 @@ Raw/Web fixture Store 均为 drafts=0, commits=8, identities=8，无夹具外写
 
 设备截图与交互来自隔离测试 App 中的 Native Compose 参考路由和正式 Web v3 Runtime；它们没有在同一 401 条夹具上运行独立冻结原始 APK。因此本切片只签核数据投影完整性和真实 Web 点击目标，不声称 raw-APK 视觉等价或 Month 页面完整签核。截图、摘要日志、APK/Skin 哈希和命令记录见 `.local/android-test/reports/native095-month-projection-20261106/manifest.md`；独立问题记录见 `docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-PROJECTION-CAPS-20261106.md`。
 
-当前明确的下一项小差异是：使用相同 Camera、时区与定时 DEADLINE fixture，对照冻结原始 APK 和 Web v3 的时间标记及框外标题矩形，并验证点击目标。AI 输入/历史长度、编辑器操作区和其余页面仍是独立未关闭项。Native 安全恢复与 Product Cutover HOLD 不变。
+## 定时点事件命中区与 DEADLINE 标题（2026-11-06）
+
+在隔离 API 35 AVD 上分别启动指定的冻结 0.9.5-rc.1 原始 APK 和当前 Web v3。两端使用 1080×2400、420 dpi、GMT、2026-11-06 的 24 小时 Timeline；均新增同名测试记录 `N095_DEADLINE_POINT_20261106`，类型 DEADLINE，时刻 12:00。原始 APK 实际 SHA-256 为 `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`；Web 端更新 APK 为 `F288BAB9DE9C9DE059FD9BC5CD85395E77C329D65DB9AC57B06B6E1142BB0F3D`，WebView 124.0.6367.219。
+
+### 实际差异与移植
+
+- 可见墨迹基本等价：Native 标题墨迹 bbox `(278,1210)-(459,1233)`、Deadline 线 `(267,1254)-(487,1258)`；Web 更新后标题 `(279,1209)-(463,1232)`、线 `(268,1257)-(488,1259)`。标题边缘最多约 4px、线最多约 3px 差异，屏幕可见位置保持在截止锚点上方。
+- 触控区原来不等价：Native `pointHeight=56.dp`；ALARM 命中区从锚点向下，DEADLINE 从锚点向上。Web 原来统一 44px 并以锚点居中，导致 Web Deadline 热区落在线下方，可能改变相邻点位的触控归属。
+- Web v3 现把点位热区设为 56 CSS px：ALARM 从标记向下，DEADLINE 向上；E2E 检查 CSS 空间关系。浏览器 CSS px 断言不再声称等于 Android dp。
+- 实际 AVD 上，Native Deadline 语义命中框 `[267,1112]-[477,1259]`；Web 更新后 `[267,1109]-[490,1262]`。同一可见标题点按均打开正确的 DEADLINE 编辑器，且没有执行保存。该设备上 Web 框仍比 Native 高 6px、宽 13px，保留为测量差异，不称完全相同。
+- 通过正式 `tools/skin-studio/build_default_clear.py` 重建唯一 `powercal-clear-default.pcskin`。包 10 个文件、411655 字节，SHA-256 `4F027EDEEF8B8F60BE3C3DA778BDC54E79601ADB04CBD5D92FAC9A74C3922366`，APK 只有一个 `.pcskin` 且与源包字节一致。Debug APK SHA-256 `F288BAB9DE9C9DE059FD9BC5CD85395E77C329D65DB9AC57B06B6E1142BB0F3D`。
+
+### 验证和未闭合项
+
+- 全串行 Gradle 门禁 PASS：981/981 JVM、0 failures/errors/skips；两个源码边界、assembleDebug、lintDebug、AndroidTest Kotlin 编译均通过。Studio 89 项 Python 测试有 3 项既有 route/recovery 源码形态断言失败，均不涉及本次 JS/包文件。完整 `e2e_v3_browser.cjs` 在较早的预览色板断言失败，没有到达时间轴段；单独 Edge 点位几何探针 PASS，Node 语法检查 PASS。
+- 真实 AVD 截图和可访问树：`.local/android-test/reports/native095-deadline-title-20261106/screenshots/raw-apk-deadline-point.png` SHA-256 `7AA2C0926AF8E7B5F38C7DF1B90F8E12A712186695CC82615B8AD2100A7D970D`；Web 更新后 `.local/android-test/reports/native095-deadline-title-20261106/screenshots/web-updated-deadline.png` SHA-256 `3C3F77BD320751103E965BCF1A0CAA5A35080203A988EC7FF410FBFDE39CE8D3`，点按后编辑器截图 `web-updated-deadline-open.png` SHA-256 `F236720CA474782B828AF232AFFD35714FFAFABC0DB7FD791D5869499B464D51`。完整命令与日志见同目录 `manifest.md`。
+- 尚未迁移的已确认差异：冻结 Native 保留锚点位于可视时间窗外 80px 以内的时点记录，其 56dp 命中区仍可能部分进入画面；`WebSkinTimelineProjection` 和 Web renderer 当前按精确 `visibleStartMillis/visibleEndMillis` 过滤。下一步应以实际 viewport 几何引入有界 margin，并在窗顶 ALARM、窗底 DEADLINE 上重放可见 sliver 点击。不能把本节当作 Timeline 整体 PASS。
+
+AI 输入/历史长度、编辑器布局、跨状态相机、其他 Native 页面与组件、无障碍和恢复仍是独立未关闭项。Native 安全恢复未变，Product Cutover 仍 HOLD。

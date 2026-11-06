@@ -7,23 +7,23 @@ OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: 2e9651c6a8cbd1cdf22f7db3a5046c3a3243d301 (remove Web Month owner/occurrence projection caps; Month parity remains narrow PASS only)
-LATEST_VERIFIED_HEAD: 2e9651c6a8cbd1cdf22f7db3a5046c3a3243d301 (serial full Gradle gate 981/981 JVM; boundaries, assembleDebug, lintDebug and AndroidTest compile PASS; dense Month Native/Clear API 35 instrumentation 1/1 PASS; Studio preview 11/11, distribution 2/2, Node syntax and month-selection browser E2E PASS)
+LATEST_CODE_HEAD: 06649a334d12d0e7e9371fcc08d26a3fcc7ee9ad (align timed point-event hit regions with frozen Native; in-viewport point slice verified; full parity remains IN PROGRESS)
+LATEST_VERIFIED_HEAD: 06649a334d12d0e7e9371fcc08d26a3fcc7ee9ad (serial full Gradle gate 981/981 JVM, source boundaries, assembleDebug, lintDebug, AndroidTest compile PASS; API 35 WebView install and visible Deadline tap PASS; browser point-geometry probe PASS; full Studio Python/browser suites retain unrelated existing failures documented below)
 CURRENT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
 TASK_STATUS: IN_PROGRESS
 PRODUCT_CUTOVER: HOLD
 TASK_BASE_HEAD: e41246d7ebe5b329adbdc657bd3e53735695efa1
-WORKING_APK_SHA256: C36388596CB759BD048A319BC36790BF04FB4F4D33A8962050A4E13F95CC4F34
-WORKING_DEFAULT_SKIN_SHA256: 974A63A4E8EC1A755DCD3ACB6A1F2E32390F588EA31E157E62586DEA6BE4B50A
+WORKING_APK_SHA256: F288BAB9DE9C9DE059FD9BC5CD85395E77C329D65DB9AC57B06B6E1142BB0F3D
+WORKING_DEFAULT_SKIN_SHA256: 4F027EDEEF8B8F60BE3C3DA778BDC54E79601ADB04CBD5D92FAC9A74C3922366
 WORKING_DEFAULT_SKIN_ID: powercal-clear-default
 NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; implementation and full parity remain IN PROGRESS)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
-LAST_COMPLETED_TASK: Native 0.9.5 Month projection cap removal (narrow PASS; Month and overall parity remain PARTIAL)
-LAST_COMPLETED_COMMIT: 2e9651c6a8cbd1cdf22f7db3a5046c3a3243d301
+LAST_COMPLETED_TASK: Native 0.9.5 timed-point hitbox direction alignment (in-viewport narrow PASS; edge visibility and full Timeline parity remain PARTIAL)
+LAST_COMPLETED_COMMIT: 06649a334d12d0e7e9371fcc08d26a3fcc7ee9ad
 LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; see audit and latest Android evidence)
-LAST_ATTEMPTED_COMMIT: 2e9651c6a8cbd1cdf22f7db3a5046c3a3243d301 (Month projection slice; broader parity task remains IN_PROGRESS)
+LAST_ATTEMPTED_COMMIT: 06649a334d12d0e7e9371fcc08d26a3fcc7ee9ad (timed point hitbox slice; broader parity task remains IN_PROGRESS)
 NEXT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
-NEXT_ACTION: Measure the timed DEADLINE point-title marker and title rectangle on the frozen raw 0.9.5-rc.1 APK versus Web v3 using the same API 35 device settings, time zone, camera, and deterministic event; verify the actual tap target and preserve screenshots. Do not infer parity from the ALARM-title slice. Month projection caps are now removed and dense-row parity is a narrow PASS; Month, Memo, Timeline and whole-surface Native-to-Web parity remain PARTIAL. AI history/input limits and editor-shell geometry remain open independent differences. Product Cutover remains HOLD.
+NEXT_ACTION: Reconcile point events just outside the visible time window: Native retains points within its 80px clip margin, while WebSkinTimelineProjection/app.js currently drop them at the exact camera boundary. Add a bounded projection margin tied to actual viewport geometry, then verify partially visible ALARM/DEADLINE hit targets on raw APK and WebView. The in-viewport DEADLINE title and directional hitbox were compared and migrated; Web target bounds remain 6px taller and 13px wider than Native in this AVD and must stay documented. Month, Memo, Timeline and whole-surface parity remain PARTIAL. AI history/input limits and editor-shell geometry remain open. Product Cutover remains HOLD.
 LAST_TASK_EVIDENCE:
   NATIVE_095_ALARM_POINT_TITLE:
     status: PASS (ALARM title typography, type color and title-box geometry only; Timeline remains PARTIAL)
@@ -668,7 +668,18 @@ LATEST_VERIFIED_EVIDENCE:
     screenshots: Native Compose reference 0D3EDE628E2F525478FE4E714CAB10046430F702B9BAD403904F1129A81EFD62; WebView F1D4CCBE4B37EB2CC2736CD7260527346918E146B885CF5360E592BA2C9FAFB4
     evidence: .local/android-test/reports/native095-month-projection-20261106/manifest.md; docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-PROJECTION-CAPS-20261106.md; docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md
     limitation: paired screenshot uses the in-app Native Compose reference route, not the standalone original APK on the same dense fixture; visual/layout signoff and all non-projection Month states remain open; Product Cutover HOLD
-BLOCKERS: Whole-surface Native-to-Web parity remains incomplete; multiple Timeline states and Native page/component comparisons remain. TalkBack focus order, forced checkpoint-I/O failure, physical/OEM reminder delivery and live AI provider reliability remain NOT TESTED. The Studio Python suite was 86/89: three existing route/recovery source-shape assertions fail against current architecture. Product Cutover remains HOLD.
+  NATIVE_095_TIMED_POINT_HITBOX:
+    status: PARTIAL (visible timed point hit regions aligned directionally; viewport-edge point inclusion remains open)
+    source_baseline: b1f7629f0c52812e1887443872f43aa6c49908c4
+    code_commit: 06649a334d12d0e7e9371fcc08d26a3fcc7ee9ad
+    current_apk_sha256: F288BAB9DE9C9DE059FD9BC5CD85395E77C329D65DB9AC57B06B6E1142BB0F3D
+    default_skin_sha256: 4F027EDEEF8B8F60BE3C3DA778BDC54E79601ADB04CBD5D92FAC9A74C3922366 (411655 bytes; one factory package; source/APK byte-identical)
+    tests: Gradle full gate PASS, 981/981 JVM and zero failures/errors/skips; boundaries, APK, lint and AndroidTest compile PASS; targeted Edge point geometry probe PASS; full Studio Python 86/89 (three unrelated source-shape failures); full browser E2E stops at pre-existing palette assertion before Timeline checks
+    android: frozen raw APK PowerCal_Native095_RawFixture_20261106/emulator-5590 and updated Web v3 PowerCal_Wave2_QA35_20261104/emulator-5556; both API 35, 1080x2400, 420dpi, GMT; updated APK installed with adb install -r and app data preserved
+    behavior: exact same timed Deadline title/date/time; both visible-title taps opened that Deadline editor; no Save action was issued. Raw target [267,1112]-[477,1259]; Web after fix [267,1109]-[490,1262]. Pixel ink bbox Native (278,1210)-(459,1233), Web (279,1209)-(463,1232); point line Native (267,1254)-(487,1258), Web (268,1257)-(488,1259)
+    evidence: .local/android-test/reports/native095-deadline-title-20261106/manifest.md; docs/issues/PC-ISSUE-SEPARATION-NATIVE-TIMED-POINT-HITBOX-20261106.md; docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md
+    limitation: Native retains point events within an 80px viewport margin; Web host/runtime still omits events outside exact visibleStart/visibleEnd. Web accessibility target is 6px taller and 13px wider in this AVD. Timeline/full-surface parity remains PARTIAL; Product Cutover HOLD
+BLOCKERS: Whole-surface Native-to-Web parity remains incomplete. Web currently omits timed point events whose hit areas partially overlap the viewport from outside the time window. Month, Memo, editor geometry, AI history/input, other Native page/component comparisons, and TalkBack remain open. Studio Python suite has three unrelated route/recovery source-shape failures; full browser E2E has a pre-Timeline palette assertion failure. Forced checkpoint-I/O failure, physical/OEM reminder delivery and live AI provider reliability remain NOT TESTED. Product Cutover remains HOLD.
 
 AUTHORITATIVE_PLAN: docs/POWERCAL_SINGLE_DEFAULT_SKIN_EXECUTION_PLAN_2026-11-03_R2.md
 ACCEPTANCE_MATRIX: docs/agent-handoff/SINGLE_SKIN_ACCEPTANCE.md
