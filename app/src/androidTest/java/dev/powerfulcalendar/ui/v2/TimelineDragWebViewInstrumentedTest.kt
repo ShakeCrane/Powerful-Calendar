@@ -246,6 +246,23 @@ class TimelineDragWebViewInstrumentedTest {
 
     private data class ScreenPoint(val x: Float, val y: Float, val cssPerPixel: Float)
 
+    private fun sendPhysicalTap(screenX: Float, screenY: Float) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val downTime = SystemClock.uptimeMillis()
+        fun send(action: Int, eventTime: Long) {
+            val event = MotionEvent.obtain(downTime, eventTime, action, screenX, screenY, 0)
+            try {
+                event.source = InputDevice.SOURCE_TOUCHSCREEN
+                instrumentation.sendPointerSync(event)
+            } finally {
+                event.recycle()
+            }
+        }
+        send(MotionEvent.ACTION_DOWN, downTime)
+        SystemClock.sleep(70)
+        send(MotionEvent.ACTION_UP, SystemClock.uptimeMillis())
+    }
+
     private fun screenPoint(web: WebView, probe: JSONObject): ScreenPoint {
         val location = IntArray(2)
         val dimensions = AtomicReference<Pair<Int, Int>>()
@@ -1107,6 +1124,196 @@ class TimelineDragWebViewInstrumentedTest {
             clearStore.close()
             nativeContext.deleteDatabase(nativeDatabase)
             clearContext.deleteDatabase(clearDatabase)
+            listOf(nativeNamespace, clearNamespace).forEach { namespace ->
+                listOf("powercal-onboarding", "powercal-skin-choice", "powercal-skin-registry",
+                    "powercal-ui", "powercal-profile", "powercal-ai", "powercal-file-ai-consent")
+                    .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+                File(storage.cacheDir, namespace).deleteRecursively()
+            }
+        }
+    }
+
+    @Test
+    fun nativeAndClearVisibleDeadlineHitBoundsMatchAndRespectEdges() {
+        val storage = compose.activity.applicationContext
+        val nativeNamespace = "pc-point-bounds-native-" + UUID.randomUUID()
+        val clearNamespace = "pc-point-bounds-clear-" + UUID.randomUUID()
+        val nativeContext = IsolatedAppContext(compose.activity, storage, nativeNamespace)
+        val clearContext = IsolatedAppContext(compose.activity, storage, clearNamespace)
+        val databaseName = "point-bounds.db"
+        val nativeStore = PowerStore(nativeContext, databaseName)
+        val clearStore = PowerStore(clearContext, databaseName)
+        var web: WebView? = null
+        try {
+            val zone = ZoneId.systemDefault()
+            val date = LocalDate.now(zone)
+            val noon = date.atTime(12, 0).atZone(zone).toInstant().toEpochMilli()
+            val title = "N095_DEADLINE_POINT_" + date.toString().replace("-", "")
+            val input = DraftForm(
+                kind = TemporalKind.DEADLINE,
+                title = title,
+                startText = DraftForm.formatInstant(noon, zone),
+                endText = DraftForm.formatInstant(noon, zone),
+                reminderMinutes = -1,
+                enabled = false,
+                zoneId = zone.id
+            )
+            val nativeSeq = (nativeStore.createFormalEvent(input, "native-point-bounds")
+                as PowerStore.CommitOutcome.Committed).eventSeq
+            val clearSeq = (clearStore.createFormalEvent(input, "native-point-bounds")
+                as PowerStore.CommitOutcome.Committed).eventSeq
+            assertEquals(nativeSeq, clearSeq)
+            assertEquals(DraftForm.from(requireNotNull(nativeStore.get(nativeSeq))),
+                DraftForm.from(requireNotNull(clearStore.get(clearSeq))))
+            val expectedCounts = Triple(0L, 1L, 1L)
+            assertEquals(expectedCounts,
+                Triple(nativeStore.draftCount(), nativeStore.commitCount(), nativeStore.identityCount()))
+            assertEquals(expectedCounts,
+                Triple(clearStore.draftCount(), clearStore.commitCount(), clearStore.identityCount()))
+
+            nativeContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            PowerCalSkinRegistry.reset()
+            SkinPackageManager(nativeContext).selectNativeForEmergencyRecovery()
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides nativeContext) {
+                        PowerCalTheme { PowerCalApp(nativeStore) }
+                    }
+                }
+            }
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithContentDescription("今日 · 复位为全天")
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithContentDescription("今日 · 复位为全天").performClick()
+            compose.waitUntil(15_000) {
+                val timeline = hostState().getJSONObject("timeline")
+                timeline.getDouble("hours") == 24.0 && timeline.getLong("anchorMillis") == noon
+            }
+            val nativeMatcher = hasContentDescription(title, substring = true) and hasClickAction()
+            val nativeTarget = compose.onAllNodes(nativeMatcher).onFirst()
+            nativeTarget.assertExists()
+            val nativeBounds = nativeTarget.fetchSemanticsNode().boundsInRoot
+            val nativeRootLocation = IntArray(2)
+            compose.runOnUiThread {
+                compose.activity.findViewById<View>(android.R.id.content)
+                    .getLocationOnScreen(nativeRootLocation)
+            }
+            val nativeScreenRect = listOf(
+                nativeRootLocation[0] + nativeBounds.left,
+                nativeRootLocation[1] + nativeBounds.top,
+                nativeRootLocation[0] + nativeBounds.right,
+                nativeRootLocation[1] + nativeBounds.bottom
+            )
+            val nativeShot = File(storage.cacheDir, "$nativeNamespace-native.png")
+            saveWindowScreenshot(nativeShot)
+            val nativeShotUri = publishScreenshotForQa(nativeShot)
+            nativeTarget.performTouchInput { click() }
+            val nativeHeader = "编辑事件 #${nativeSeq.toString().padStart(4, '0')}"
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText(nativeHeader).fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals("Opening the Native point target is read-only", expectedCounts,
+                Triple(nativeStore.draftCount(), nativeStore.commitCount(), nativeStore.identityCount()))
+            clearContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            PowerCalSkinRegistry.reset()
+            SkinPackageManager(clearContext).select("powercal-clear-default")
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides clearContext) {
+                        PowerCalTheme { PowerCalApp(clearStore) }
+                    }
+                }
+            }
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val view = requireNotNull(web)
+            awaitJs(view, "!!window.PowerCalSkin && !!document.querySelector('#timelineSurface')")
+            evaluate(view, "document.querySelector('[data-action=\"today\"]').click();true")
+            compose.waitUntil(15_000) {
+                val timeline = hostState().getJSONObject("timeline")
+                timeline.getDouble("hours") == 24.0 && timeline.getLong("anchorMillis") == noon
+            }
+            awaitJs(view, "!!document.querySelector('.tEvent[data-event-seq=\"$clearSeq\"]')")
+            val probe = eventProbe(view, clearSeq)
+            assertTrue("Web Deadline hit target exists: $probe", probe.getBoolean("found"))
+            assertTrue("Web Deadline point resolves to its actual event button: $probe",
+                probe.getBoolean("hitButton"))
+            val webMetrics = AtomicReference<Triple<IntArray, Int, Int>?>()
+            compose.runOnUiThread {
+                val location = IntArray(2)
+                view.getLocationOnScreen(location)
+                webMetrics.set(Triple(location, view.width, view.height))
+            }
+            val (webLocation, webWidthPx, webHeightPx) = requireNotNull(webMetrics.get())
+            val scaleX = webWidthPx / probe.getDouble("cssWidth")
+            val scaleY = webHeightPx / probe.getDouble("cssHeight")
+            val cssRect = probe.getJSONObject("rect")
+            val webScreenRect = listOf(
+                webLocation[0] + cssRect.getDouble("left") * scaleX,
+                webLocation[1] + cssRect.getDouble("top") * scaleY,
+                webLocation[0] + cssRect.getDouble("right") * scaleX,
+                webLocation[1] + cssRect.getDouble("bottom") * scaleY
+            )
+            for (edge in 0..3) {
+                assertTrue(
+                    "Web Deadline edge $edge matches native Compose within 1.5 physical pixels: " +
+                        "native=$nativeScreenRect web=$webScreenRect",
+                    kotlin.math.abs(nativeScreenRect[edge].toDouble() - webScreenRect[edge]) <= 1.5
+                )
+            }
+            assertEquals("The formal Web point target preserves the frozen 84dp lane width",
+                84.0, cssRect.getDouble("right") - cssRect.getDouble("left"), 0.05)
+            assertEquals("The formal Web point target preserves the frozen 56dp hit height",
+                56.0, cssRect.getDouble("bottom") - cssRect.getDouble("top"), 0.05)
+            val webShot = File(storage.cacheDir, "$clearNamespace-web.png")
+            saveWindowScreenshot(webShot)
+            val webShotUri = publishScreenshotForQa(webShot)
+            sendTouch(view, probe, holdMillis = 0)
+            awaitJs(view, "!document.querySelector('#skinSheet').hidden")
+            assertEquals(clearSeq, hostState().getJSONObject("editing")
+                .getJSONObject("editor").getLong("eventSeq"))
+            assertEquals("Opening the Web point target is read-only", expectedCounts,
+                Triple(clearStore.draftCount(), clearStore.commitCount(), clearStore.identityCount()))
+            evaluate(view, "document.querySelector('#sheetClose').click();true")
+            awaitJs(view, "document.querySelector('#skinSheet').hidden")
+            val tapY = ((webScreenRect[1] + webScreenRect[3]) / 2).toFloat()
+            val includedEdgeX = webScreenRect[2].toInt().toFloat()
+            val excludedEdgeX = includedEdgeX + 2f
+            sendPhysicalTap(includedEdgeX, tapY)
+            awaitJs(view, "!document.querySelector('#skinSheet').hidden")
+            assertEquals("The last included edge sample opens the same Web Deadline",
+                clearSeq, hostState().getJSONObject("editing").getJSONObject("editor").getLong("eventSeq"))
+            assertEquals(expectedCounts,
+                Triple(clearStore.draftCount(), clearStore.commitCount(), clearStore.identityCount()))
+            evaluate(view, "document.querySelector('#sheetClose').click();true")
+            awaitJs(view, "document.querySelector('#skinSheet').hidden")
+            sendPhysicalTap(excludedEdgeX, tapY)
+            assertTrue("The first excluded edge sample stays outside the Web Deadline target",
+                evaluate(view, "document.querySelector('#skinSheet').hidden").toBoolean())
+            assertEquals("A tap outside the point target is Store-read-only", expectedCounts,
+                Triple(clearStore.draftCount(), clearStore.commitCount(), clearStore.identityCount()))
+            println("NATIVE095_VISIBLE_POINT_BOUNDS date=$date zone=${zone.id} title=$title " +
+                "nativeRoot=$nativeBounds nativeScreen=$nativeScreenRect " +
+                "webProbe=$probe webScreen=$webScreenRect edgeSamples=[$includedEdgeX,$excludedEdgeX] " +
+                "scale=[$scaleX,$scaleY] " +
+                "nativeScreenshot=$nativeShotUri webScreenshot=$webShotUri stores=$expectedCounts")
+        } finally {
+            compose.runOnUiThread {
+                compose.activity.setContent { }
+                PowerCalSkinRegistry.reset()
+            }
+            compose.waitForIdle()
+            nativeStore.close()
+            clearStore.close()
+            nativeContext.deleteDatabase(databaseName)
+            clearContext.deleteDatabase(databaseName)
             listOf(nativeNamespace, clearNamespace).forEach { namespace ->
                 listOf("powercal-onboarding", "powercal-skin-choice", "powercal-skin-registry",
                     "powercal-ui", "powercal-profile", "powercal-ai", "powercal-file-ai-consent")
