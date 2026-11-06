@@ -419,6 +419,29 @@ class PowerCalAiProposalReviewWebViewInstrumentedTest {
 
             val before = listOf(store.all().size.toLong(), store.draftCount(), store.pendingCount().toLong(),
                 store.commitCount(), store.identityCount(), store.nextSequencePreview())
+            tapWebSelector(view, "#chatMessages article.chat-bubble.user",
+                requireTrustedClick = false, holdMillis = 650, requireTrustedUp = false)
+            awaitJs(view, "!document.querySelector('#chatMessages article.chat-bubble.user " +
+                ".chat-message-actions').hidden")
+            awaitJs(view, "[...document.querySelectorAll('#chatMessages article.chat-bubble.user " +
+                ".chat-message-actions [role=menuitem]')].map(x=>x.textContent).join('|')===" +
+                "'从此消息创建事件草稿|编辑并重新发送|撤回此消息及后续对话|复制文字'")
+            awaitJs(view, "(()=>{const bubble=document.querySelector('#chatMessages article.chat-bubble.user')," +
+                "menu=bubble.querySelector('.chat-message-actions'),items=[...menu.querySelectorAll('[role=menuitem]')]," +
+                "b=bubble.getBoundingClientRect(),m=menu.getBoundingClientRect(),style=getComputedStyle(menu);" +
+                "return Math.abs(m.left-b.left)<1&&Math.abs(m.top-b.bottom)<1&&" +
+                "Math.abs(m.width-164)<2&&Math.abs(m.height-208)<2&&" +
+                "style.backgroundColor==='rgb(239, 242, 248)'&&style.borderRadius==='4px'&&" +
+                "items.length===4&&items.every(item=>getComputedStyle(item).minHeight==='48px'&&" +
+                "getComputedStyle(item).fontSize==='14px');})()")
+            tapWebSelector(view,
+                "#chatMessages article.chat-bubble.user .chat-message-actions " +
+                    "button[aria-label=\"复制消息文字\"]")
+            compose.waitUntil(5_000) {
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE)
+                    as? android.content.ClipboardManager
+                clipboard?.primaryClip?.getItemAt(0)?.text?.toString() == userMessage
+            }
             tapWebSelector(view,
                 "#chatMessages article.chat-bubble.assistant", requireTrustedClick = false,
                 holdMillis = 650, requireTrustedUp = false)
@@ -427,6 +450,16 @@ class PowerCalAiProposalReviewWebViewInstrumentedTest {
             awaitJs(view, "[...document.querySelectorAll('#chatMessages article.chat-bubble.assistant " +
                 ".chat-message-actions [role=menuitem]')].map(x=>x.textContent).join('|')===" +
                 "'从此消息创建事件草稿|回退到此消息|复制文字'")
+            awaitJs(view, "(()=>{const bubble=document.querySelector('#chatMessages article.chat-bubble.assistant')," +
+                "menu=bubble.querySelector('.chat-message-actions'),items=[...menu.querySelectorAll('[role=menuitem]')]," +
+                "b=bubble.getBoundingClientRect(),m=menu.getBoundingClientRect(),style=getComputedStyle(menu)," +
+                "fill=getComputedStyle(document.querySelector('#chatMessages article.chat-bubble.user')).backgroundColor;" +
+                "return Math.abs(m.left-b.left)<1&&Math.abs(m.top-b.bottom)<1&&" +
+                "Math.abs(m.width-164)<2&&Math.abs(m.height-160)<2&&" +
+                "style.backgroundColor==='rgb(239, 242, 248)'&&style.borderRadius==='4px'&&" +
+                "items.length===3&&items.every(item=>getComputedStyle(item).minHeight==='48px'&&" +
+                "getComputedStyle(item).fontSize==='14px')&&" +
+                "fill==='rgb(220, 229, 255)';})()")
             tapWebSelector(view,
                 "#chatMessages article.chat-bubble.assistant .chat-message-actions " +
                     "button[aria-label=\"复制消息文字\"]")

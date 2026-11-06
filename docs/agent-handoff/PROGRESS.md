@@ -2848,3 +2848,13 @@ API 35 emulator-5570 真实触控 Native Compose 与打包 Clear WebView 的无 
 - Device-run scope note: `connectedDebugAndroidTest` also dispatched the test to `PowerCal_Native095_RawFixture_20261106` / `emulator-5590`; both device reports say 1/1 PASS. This second AVD was not intended for the run, so no unchanged-state claim is made and no further commands were sent to it. Manual fixture, touch, screenshot and cleanup were limited to `emulator-5556`.
 - Issue: `docs/issues/PC-ISSUE-SEPARATION-NATIVE-AI-BUBBLE-CHROME-20261107.md`. Native recovery and product IDs unchanged; Product Cutover remains HOLD. Menu visual layout, attachments, proposals, errors/retry, composer, real-provider behavior and whole-page parity remain open.
 - Unique next action: compare frozen Native and Web message-action menu geometry, typography and touch behavior on the same synthetic history, using an explicitly serial-restricted Android run.
+
+## 2026-11-07 Native 0.9.5 AI message-action menu
+
+- **窄切片 PASS；AI 页面与全页面迁移仍 PARTIAL。** Web v3 菜单从覆盖消息的宽白色浮层调整为贴在消息气泡下方的 Native 浅灰菜单；四项用户菜单及三项助手菜单保留现有 Host actions，标签、排序、填色、圆角、行高和字号与冻结实现一致。
+- 原始 0.9.5-rc.1 APK 与新版 WebView 使用相同 42 条合成聊天记录、API 35、1080×2400、420 dpi。Native 菜单实测 bounds `(134,444,428,546)`；Web 截图变化区域 `(133..563,436..981)`、431×546px。两边菜单均贴气泡底边；Web 气泡在该截图对中高 8px，菜单宽差 3px、高度一致，因此只认定近似几何/样式等价，不宣称逐像素一致。
+- WebView 真实触屏长按展开菜单，Host 复制返回准确内容。仪器断言两个角色菜单结构，Calendar Store 的 events/drafts/pending/commits/identities/sequence 快照未变。隔离 Web AVD `PowerCal_Wave2_QA35_20261104` / `emulator-5556`；参考 APK 另用新建 `PowerCal_Native095_MenuReference_20261107` / `emulator-5560`，两者 API 35、1080×2400、420 dpi；WebView 124.0.6367.219。
+- 定向 Android instrumentation 1/1 PASS；串行 Gradle 门禁 BUILD SUCCESSFUL（本轮结果 XML 汇总 987/987，0 failures/errors/skips；边界、APK、Lint、AndroidTest 编译/打包 PASS）；Node 语法 PASS；默认分发 Python 测试 2/2 PASS；正式包校验 PASS。
+- Debug APK SHA-256 `F3EB40CA90C732137F820C4F8843217C990AC9672F6843EC68F3D1EDDE5105D7`；唯一 `powercal-clear-default.pcskin` 10 文件、413166 bytes，源码/APK SHA-256 `1B05DA65418D5C0C24273F369C54B95EE59D1DCC0CFBA32A3FFD6E80D5478F11`。Native/Web 截图哈希、运行命令与范围限制见 `.local/android-test/reports/native095-ai-menu-20261107/manifest.md`；Issue `docs/issues/PC-ISSUE-SEPARATION-NATIVE-AI-MENU-20261107.md`。
+- 当前可见 AI 业务整体、提案/附件/错误状态、暗色截图、输入法/焦点遍历和其他原生页面仍未完成对照；Native 恢复、Core/Host 业务语义和唯一默认包身份未变；Product Cutover 继续 HOLD。
+- 同步全页面路由审计发现：Web Settings 仍有普通可见按钮经 `nativeSettings` 打开 `NativeToolsPage`；Web 已有相应设置/API 路径。此普通 Native 路由须与独立 `nativeRecoverySignal` 区分；未完成入口移除及 Android 回归前保持 Native Tools 可用，不能直接删代码。来源与精确路径已记入视觉审计；该路由状态尚无真实同设备页面验证。

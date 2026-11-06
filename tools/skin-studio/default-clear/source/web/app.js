@@ -1382,7 +1382,7 @@ function renderChat(){
       ()=>rewindChat(messageId,false));
     addMenuAction("复制文字","复制消息文字",!messageId,
       ()=>send("copyChatMessage",{messageId,historyRevision}));
-    actionContainer.append(trigger,actions);header.append(actionContainer);bubble.append(header);
+    actionContainer.append(trigger);header.append(actionContainer);bubble.append(header);
     bubble.append(node("p","chat-message-content",item.content));
     if(item.role!=="user"&&item.proposalAvailable===true){
       const proposal=node("button","chat-message-proposal","从此消息创建事件草稿");
@@ -1391,6 +1391,7 @@ function renderChat(){
         messageId,historyRevision,source:"PROPOSAL_SOURCE"}));
       bubble.append(proposal);
     }
+    bubble.append(actions);
     list.append(bubble);
   }
   renderAiBatchControls();
