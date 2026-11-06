@@ -1016,7 +1016,7 @@ function renderTimeline(){
       line.style.top=(anchorY-hitTop-0.75)+"px";
       const title=makeTimelineTitle(item,kind,`${timeText} · ${item.title}`,laneWidth-6);
       title.classList.add("tPointLabel",kind);
-      title.style.top=(anchorY-hitTop+(kind==="ALARM"?3:-18))+"px";
+      title.style.top=(anchorY-hitTop+(kind==="ALARM"?2:-26))+"px";
       button.append(line,title);
     }
     attachTimelineDrag(button,item,axis);

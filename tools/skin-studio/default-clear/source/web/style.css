@@ -80,9 +80,9 @@ button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outl
 .tPointLine{position:absolute;left:0;right:0;height:1.5px;pointer-events:none;z-index:1}
 .tPointLine.ALARM{background:var(--alarm)}
 .tPointLine.DEADLINE{background:var(--deadline)}
-.tPointLabel{left:3px;right:auto;font-size:11px}
-.tPointLabel.ALARM{color:var(--alarm-ink)}
-.tPointLabel.DEADLINE{color:var(--deadline-ink)}
+.tPointLabel{left:3px;right:auto;font-size:13px;line-height:24px;letter-spacing:.5px}
+.tPointLabel.ALARM{color:var(--alarm)}
+.tPointLabel.DEADLINE{color:var(--deadline)}
 .now-line{position:absolute;left:0;right:0;height:1.5px;background:var(--now);pointer-events:none;z-index:4}
 .timeline-buttons{display:flex;gap:10px;align-items:center;justify-content:center;padding:6px 10px;
  margin:12px auto 0;width:max-content;max-width:100%;background:var(--glass-fill);

@@ -24,7 +24,9 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.powerfulcalendar.MainActivity
 import dev.powerfulcalendar.core.DraftForm
+import dev.powerfulcalendar.core.RecurrenceEngine
 import dev.powerfulcalendar.core.PowerStore
+import dev.powerfulcalendar.core.TemporalRecord
 import dev.powerfulcalendar.core.TemporalKind
 import dev.powerfulcalendar.core.TimelineLayout
 import org.json.JSONArray
@@ -248,6 +250,7 @@ class Native095RawAndWebDualWingInstrumentedTest {
             val leftTitle = "WING_LEFT_3"
             val leftSeq = requireNotNull(sequences[leftTitle])
             val rightSeq = requireNotNull(sequences["WING_RIGHT_1"])
+            val leftRecord = store.all().single { it.title == leftTitle }
             val leftGeometry: JSONObject
             val rightGeometry: JSONObject
             val leftRange: JSONObject
@@ -261,13 +264,15 @@ class Native095RawAndWebDualWingInstrumentedTest {
                 val rightScroll = scrollRange("timeline-right-lanes")
                 leftGeometry = rectJson(left, rootOffset)
                 rightGeometry = rectJson(right, rootOffset)
+                val titleBounds = nativeTitleBounds(leftRecord)
                 leftRange = JSONObject().put("min", leftScroll.first).put("max", leftScroll.second)
                 rightRange = JSONObject().put("min", rightScroll.first).put("max", rightScroll.second)
                 val screenshot = saveScreenshot(screenshotName)
                 println("NATIVE095_CAPTURE skin=$skinId date=$date zone=${zone.id} " +
                     "screen=${viewport.width}x${viewport.height} statusInset=$statusInset " +
                     "leftWing=${rectJson(leftWing, rootOffset)} rightWing=${rectJson(rightWing, rootOffset)} " +
-                    "leftEvent=$leftGeometry rightEvent=$rightGeometry leftScroll=$leftRange " +
+                    "leftEvent=$leftGeometry leftTitle=${rectJson(titleBounds, rootOffset)} " +
+                    "rightEvent=$rightGeometry leftScroll=$leftRange " +
                     "rightScroll=$rightRange sequences=$sequences screenshot=${screenshot.absolutePath}")
 
                 assertEquals(seedCounts, counts(store))
@@ -290,12 +295,21 @@ class Native095RawAndWebDualWingInstrumentedTest {
                 assertEquals(rightAfter.right, rightAfterLeftSwipe.right, 1f)
             } else {
                 val actualWeb = requireNotNull(web)
-                val screenshot = saveScreenshot(screenshotName)
+                val screenshot = saveScreenshot(screenshotName, actualWeb)
                 val runtime = evaluate(actualWeb, "JSON.stringify({ready:document.readyState,title:document.title,href:location.href,hasLeft:!!document.getElementById('timelineLeft'),hasRight:!!document.getElementById('timelineRight')})")
                 File(requireNotNull(compose.activity.externalCacheDir), "native095-web-runtime.json")
                     .writeText(runtime)
                 leftGeometry = webEventSnapshot(actualWeb, "LEFT", leftSeq)
                 rightGeometry = webEventSnapshot(actualWeb, "RIGHT", rightSeq)
+                val pointLabel = webPointLabelSnapshot(actualWeb, "LEFT", leftSeq)
+                assertEquals("Native ALARM title font size", "13px", pointLabel.getString("fontSize"))
+                assertEquals("Native ALARM title line height", "24px", pointLabel.getString("lineHeight"))
+                assertEquals("Native ALARM title letter spacing", "0.5px", pointLabel.getString("letterSpacing"))
+                assertEquals("Native ALARM title color", "rgb(61, 95, 216)", pointLabel.getString("color"))
+                assertEquals("Native ALARM title box height in CSS pixels", 24.0,
+                    pointLabel.getDouble("labelHeight"), 0.1)
+                assertEquals("Native ALARM title top relative to point-line top", 2.75,
+                    pointLabel.getDouble("labelTopMinusLineTop"), 0.1)
                 leftRange = wingSnapshot(actualWeb, "LEFT")
                 rightRange = wingSnapshot(actualWeb, "RIGHT")
                 assertEquals("Frozen Native left wing starts at its outer edge", 0.0,
@@ -305,6 +319,16 @@ class Native095RawAndWebDualWingInstrumentedTest {
                 val webRect = webViewRect(actualWeb)
                 val scaleX = (webRect.getDouble("right") - webRect.getDouble("left")) /
                     leftRange.getDouble("viewportWidth")
+                val scaleY = (webRect.getDouble("bottom") - webRect.getDouble("top")) /
+                    leftRange.getDouble("viewportHeight")
+                assertEquals("Native ALARM title screen x", 40.0,
+                    webRect.getDouble("left") + pointLabel.getDouble("labelLeft") * scaleX, 1.5)
+                assertEquals("Native ALARM title screen y", 1047.0,
+                    webRect.getDouble("top") + pointLabel.getDouble("labelTop") * scaleY, 1.5)
+                assertEquals("Native ALARM title physical width", 186.0,
+                    pointLabel.getDouble("labelWidth") * scaleX, 2.0)
+                assertEquals("Native ALARM title physical height", 63.0,
+                    pointLabel.getDouble("labelHeight") * scaleY, 1.5)
                 assertEquals("Native reference left event screen x", 32.0,
                     webRect.getDouble("left") + leftGeometry.getDouble("eventLeft") * scaleX, 4.0)
                 assertEquals("Native reference right event screen x", 824.0,
@@ -312,6 +336,7 @@ class Native095RawAndWebDualWingInstrumentedTest {
                 println("NATIVE095_CAPTURE skin=$skinId date=$date zone=${zone.id} " +
                     "screen=${viewport.width}x${viewport.height} statusInset=$statusInset " +
                     "webView=${webViewRect(actualWeb)} leftEvent=$leftGeometry " +
+                    "leftPointTitle=$pointLabel " +
                     "rightEvent=$rightGeometry leftScroll=$leftRange rightScroll=$rightRange " +
                     "sequences=$sequences screenshot=${screenshot.absolutePath}")
 
@@ -363,6 +388,15 @@ class Native095RawAndWebDualWingInstrumentedTest {
             .fetchSemanticsNodes()
         assertEquals("Expected exactly one visible/clickable Native event $title", 1, nodes.size)
         return nodes.single().boundsInRoot
+    }
+
+    private fun nativeTitleBounds(record: TemporalRecord): Rect {
+        val localStart = java.time.Instant.ofEpochMilli(requireNotNull(record.startMillis))
+            .atZone(record.zone).toLocalDateTime()
+        val occurrenceKey = "${record.eventSeq}:${RecurrenceEngine.keyFor(localStart)}"
+        val stableId = "${record.eventSeq}:$occurrenceKey"
+        val tag = "timeline-title-${record.eventSeq}-${stableId.hashCode().toUInt().toString(16)}"
+        return compose.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
     }
 
     private fun scrollRange(tag: String): Pair<Float, Float> {
@@ -437,6 +471,18 @@ class Native095RawAndWebDualWingInstrumentedTest {
       return {found:true,eventSeq:${eventSeq},lane:Number(event.dataset.lane),eventLeft:r.left,eventTop:r.top,
         eventRight:r.right,eventBottom:r.bottom,eventWidth:r.width,eventHeight:r.height,
         scrollLeft:wing.scrollLeft,maxScroll:wing.scrollWidth-wing.clientWidth};
+    })()""")
+
+    private fun webPointLabelSnapshot(web: WebView, side: String, eventSeq: Long) = evaluateObject(web, """(() => {
+      const wing=document.getElementById(${JSONObject.quote(if (side == "LEFT") "timelineLeft" else "timelineRight")});
+      const event=wing?.querySelector(${JSONObject.quote(".tEvent[data-event-seq='$eventSeq']")});
+      const label=event?.querySelector(".tPointLabel"),line=event?.querySelector(".tPointLine");
+      if(!event||!label||!line)return {found:false};
+      const r=label.getBoundingClientRect(),l=line.getBoundingClientRect(),s=getComputedStyle(label);
+      return {found:true,labelLeft:r.left,labelTop:r.top,labelWidth:r.width,labelHeight:r.height,
+        fontSize:s.fontSize,lineHeight:s.lineHeight,letterSpacing:s.letterSpacing,color:s.color,
+        labelTopMinusLineTop:r.top-l.top,
+        lineTop:l.top,lineHeightPx:l.height};
     })()""")
 
     private fun wingSnapshot(web: WebView, side: String) = evaluateObject(web, """(() => {
@@ -521,8 +567,20 @@ class Native095RawAndWebDualWingInstrumentedTest {
         send(MotionEvent.ACTION_UP, SystemClock.uptimeMillis(), endX, endY)
     }
 
-    private fun saveScreenshot(name: String): File {
+    private fun saveScreenshot(name: String, web: WebView? = null): File {
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        if (web != null) {
+            val visualStateReady = CountDownLatch(1)
+            compose.runOnUiThread {
+                web.postVisualStateCallback(SystemClock.uptimeMillis(), object : WebView.VisualStateCallback() {
+                    override fun onComplete(requestId: Long) {
+                        visualStateReady.countDown()
+                    }
+                })
+            }
+            assertTrue("WebView visual state timed out", visualStateReady.await(10, TimeUnit.SECONDS))
+            SystemClock.sleep(250)
+        }
         val file = File(requireNotNull(compose.activity.externalCacheDir), name)
         val bitmap = AtomicReference<Bitmap>()
         val result = AtomicReference<Int>()
