@@ -681,7 +681,7 @@ internal fun decodeBridgeAction(raw: String): WebSkinAction? {
     if (name.length !in 1..40) return null
     return when (name) {
         "openAiSettings" -> if (keys == setOf("name")) WebSkinAction.OpenAiSettings else null
-        "timeline", "month", "memo", "ai", "settings", "nativeSettings", "openDeck", "today" ->
+        "timeline", "month", "memo", "ai", "settings", "openDeck", "today" ->
             if (keys == setOf("name")) WebSkinAction.Routed(name) else null
         "openProfileEditor" -> if (keys == setOf("name"))
             WebSkinAction.OpenProfileEditor else null

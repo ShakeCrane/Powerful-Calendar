@@ -2136,10 +2136,6 @@ fun PowerCalApp(
                         page = Page.AI.name
                     }
                     "settings" -> page = Page.SETTINGS.name
-                    "nativeSettings" -> {
-                        webProfileEditorName = null; webProfileEditorSkinId = null
-                        page = Page.TOOLS.name
-                    }
                     "openDeck" -> openDeckAt(null)
                     "today" -> {
                         nowMillis = System.currentTimeMillis()

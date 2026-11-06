@@ -196,9 +196,10 @@ async function main(){
     await frameEval(`document.querySelector('#openAiSettings').click()`);
     await waitFor(evaluate,"document.querySelector('#bridgeLog').textContent.includes('此页面不启动 Android Host')",
       "Mock protected AI settings route");
-    await frameEval(`document.querySelector('#nativeRecoverySettings').click()`);
-    await waitFor(evaluate,"document.querySelector('#bridgeLog').textContent.includes('不启动 Android Host')",
-      "Mock native recovery route");
+    const nativeToolsRoute=await frameEval("document.querySelector('[data-action=\\\"nativeSettings\\\"]')===null&&"+
+      "document.querySelector('#settings-recovery-section')===null");
+    if(!nativeToolsRoute)
+      throw Error("Studio preview still exposes the ordinary Native Tools route");
     const result={
       status:"PASS",
       scope:"Chrome/CDP Skin Studio Preview Mock; no Android permission or Native settings launched",
@@ -214,6 +215,7 @@ async function main(){
         calendarStoreWritten:false},
       profileSourceEditor:sourceEdit,
       skinCatalogueAbsent:true,
+      ordinaryNativeToolsRoute:false,
       mockLog:(await evaluate("document.querySelector('#bridgeLog').innerText")).split("\n").slice(0,5)
     };
     const resultPath=path.join(reportDir,`studio-mock-${runId}.json`);

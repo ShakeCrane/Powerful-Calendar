@@ -58,6 +58,12 @@ async function main(){
       }
       throw Error(label+" timed out");
     };
+    const waitAction=async(name,filter,label)=>{
+      const expression=`window.__clearActions?.find(x=>x?.type==='action'&&`+
+        `x.payload?.name===${JSON.stringify(name)}&&(${filter||"true"}))`;
+      await waitFor(`!!${expression}`,label);
+      return evaluate(expression);
+    };
     await waitFor("document.readyState==='complete'&&document.querySelector('#settingsPage')",
       "Clear source load");
     await evaluate(`(()=>{
@@ -65,16 +71,18 @@ async function main(){
       window.__clearHostPort=pair.port1;
       pair.port1.onmessage=event=>window.__clearActions.push(JSON.parse(event.data));
       pair.port1.start();window.postMessage('powercal-port','*',[pair.port2]);
-      pair.port1.postMessage(JSON.stringify({version:1,type:'state',payload:{
+      return true;
+    })()`);
+    await waitFor("window.__clearActions?.some(x=>x?.type==='presentation')",
+      "Skin Host bridge handshake");
+    await evaluate(`window.__clearHostPort.postMessage(JSON.stringify({version:1,type:'state',payload:{
         page:'TIMELINE',notificationPermission:{required:true,allowed:false},
         exactAlarmPermission:{required:true,allowed:false},
         timeline:{anchorMillis:1792800000000,zoneId:'Asia/Shanghai',hours:24,items:[]}
-      }}));return true;
-    })()`);
+      }}))`);
 
     await evaluate(`document.querySelector('.clear-tabbar [data-action="settings"]').click()`);
-    await waitFor("window.__clearActions?.length===1","Settings route action");
-    const route=await evaluate("window.__clearActions[0]");
+    const route=await waitAction("settings",null,"Settings route action");
     if(route?.payload?.name!=="settings")throw Error("Clear settings tab emitted the wrong route");
     await evaluate(`window.__clearHostPort.postMessage(JSON.stringify({version:1,type:'state',payload:{
       page:'SETTINGS',hostNotice:'从 Android 宿主接收的测试通知',
@@ -145,8 +153,8 @@ async function main(){
     await evaluate("Array.from(document.querySelectorAll(" +
       "'#settingsOptionGroups [data-option-id]')).find(" +
       "button=>button.dataset.optionId==='data.legacy.migrate').click(); true");
-    await waitFor("window.__clearActions?.length===2","Host-owned migration option action");
-    const migrationRequest=await evaluate("window.__clearActions[1]");
+    const migrationRequest=await waitAction("invokeOption","x.payload?.id==='data.legacy.migrate'",
+      "Host-owned migration option action");
     if(migrationRequest?.payload?.name!=="invokeOption"||
       migrationRequest?.payload?.id!=="data.legacy.migrate")
       throw Error("Settings migration option did not invoke its registered Host action");
@@ -154,18 +162,18 @@ async function main(){
     const screenshotPath=path.join(reportDir,`settings-${runId}.png`);
     fs.writeFileSync(screenshotPath,Buffer.from(screenshot.data,"base64"));
     await evaluate(`document.querySelector('[data-action="requestNotificationPermission"]').click()`);
-    await waitFor("window.__clearActions?.length===3","Permission request action");
-    const permissionRequest=await evaluate("window.__clearActions[2]");
+    const permissionRequest=await waitAction("requestNotificationPermission",null,
+      "Permission request action");
     if(permissionRequest?.payload?.name!=="requestNotificationPermission")
       throw Error("Clear emitted the wrong notification permission action");
     await evaluate(`document.querySelector('[data-action="openExactAlarmSettings"]').click()`);
-    await waitFor("window.__clearActions?.length===4","Exact alarm settings action");
-    const exactAlarmRequest=await evaluate("window.__clearActions[3]");
+    const exactAlarmRequest=await waitAction("openExactAlarmSettings",null,
+      "Exact alarm settings action");
     if(exactAlarmRequest?.payload?.name!=="openExactAlarmSettings")
       throw Error("Clear emitted the wrong exact alarm settings action");
     await evaluate(`document.querySelector('[data-action="reconcileReminders"]').click()`);
-    await waitFor("window.__clearActions?.length===5","Manual reminder reconcile action");
-    const reconcileRequest=await evaluate("window.__clearActions[4]");
+    const reconcileRequest=await waitAction("reconcileReminders",null,
+      "Manual reminder reconcile action");
     if(reconcileRequest?.payload?.name!=="reconcileReminders")
       throw Error("Clear emitted the wrong reminder reconcile action");
     await evaluate(`window.__clearHostPort.postMessage(JSON.stringify({version:1,type:'state',payload:{
@@ -206,19 +214,18 @@ async function main(){
       "Legacy Android exact-alarm status");
     const exactLegacyText=await evaluate("document.querySelector('#exactAlarmPermissionStatus').textContent");
 
-    await evaluate(`document.querySelector('[data-action="nativeSettings"]').click()`);
-    await waitFor("window.__clearActions?.length===6","Native recovery route action");
-    const recovery=await evaluate("window.__clearActions[5]");
-    if(recovery?.payload?.name!=="nativeSettings")
-      throw Error("Clear did not preserve its native settings recovery route");
+    const nativeToolsRoute=await evaluate("document.querySelector('[data-action=\\\"nativeSettings\\\"]')===null&&"+
+      "document.querySelector('#settings-recovery-section')===null");
+    if(!nativeToolsRoute)
+      throw Error("Clear Settings still exposes an ordinary Native Tools route");
 
     const assetPath=path.join(root,"app/src/main/assets/powercal-clear-default.pcskin");
     const result={
       status:"PASS",
       scope:"Chrome 156 Headless/CDP rendering of canonical Clear source with a protocol-level Mock Host; not Android WebView or OS permission UI",
       actions:[route.payload.name,migrationRequest.payload.name+":"+migrationRequest.payload.id,
-        permissionRequest.payload.name,exactAlarmRequest.payload.name,
-        reconcileRequest.payload.name,recovery.payload.name],
+        permissionRequest.payload.name,exactAlarmRequest.payload.name,reconcileRequest.payload.name],
+      ordinaryNativeToolsRoute:false,
       settingsOptionIds:JSON.parse(settingsOptionIds),
       hostNoticeText,deniedText,grantedText,legacyText,exactDeniedText,exactGrantedText,exactLegacyText,
       reminderDiagnosticText,

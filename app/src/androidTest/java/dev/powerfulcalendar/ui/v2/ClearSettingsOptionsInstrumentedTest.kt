@@ -461,7 +461,8 @@ class ClearSettingsOptionsInstrumentedTest {
                 "].every(id=>Array.from(document.querySelectorAll(" +
                 "'#settingsOptionGroups [data-option-id]')).some(el=>el.dataset.optionId===id))"))
             assertTrue(evaluate(view,
-                "document.querySelector('[data-action=nativeSettings]')?.isConnected===true") == "true")
+                "document.querySelector('[data-action=nativeSettings]')===null&&" +
+                    "document.querySelector('#settings-recovery-section')===null") == "true")
             assertFalse("Clear state must not expose installed skins", WebSkinBridgeRuntime.state().has("skinChoices"))
             assertFalse("Clear state must not expose a selected skin id",
                 WebSkinBridgeRuntime.state().has("selectedSkinId"))
@@ -478,7 +479,8 @@ class ClearSettingsOptionsInstrumentedTest {
             )
             val installedBeforeRetiredActions = skinManager.installed().map { it.id }.toSet()
             val retiredActions = listOf(
-                "selectSkin", "importSkin", "exportClearSkin", "exportInstalledSkin", "deleteSkin"
+                "selectSkin", "importSkin", "exportClearSkin", "exportInstalledSkin", "deleteSkin",
+                "nativeSettings"
             )
             retiredActions.forEach { actionName ->
                 evaluate(view, "(()=>{const b=document.createElement('button');" +
@@ -487,6 +489,8 @@ class ClearSettingsOptionsInstrumentedTest {
                 SystemClock.sleep(100)
             }
             compose.waitForIdle()
+            assertEquals("Retired Skin action must not route into Native Tools", "SETTINGS",
+                WebSkinBridgeRuntime.state().optString("page"))
             assertEquals("Skin JS must not change the active runtime", "powercal-clear-default",
                 skinManager.currentId())
             assertEquals("Skin JS must not add or delete installed packages", installedBeforeRetiredActions,
@@ -1930,36 +1934,22 @@ class ClearSettingsOptionsInstrumentedTest {
             compose.onNodeWithText("个人信息").assertExists()
         }
 
-        fun openClearNativeRecoveryTools() {
+        fun openNativeRecoveryToolsFromClearSelection() {
             compose.runOnUiThread {
                 compose.activity.setContent { }
                 PowerCalSkinRegistry.reset()
                 skinManager.select("powercal-clear-default")
-                compose.activity.setContent { PowerCalTheme { PowerCalApp(store) } }
-            }
-            var web: WebView? = null
-            compose.waitUntil(30_000) {
-                compose.runOnUiThread {
-                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                compose.activity.setContent {
+                    PowerCalTheme { PowerCalApp(store, nativeRecoverySignal = 1) }
                 }
-                web != null
             }
-            val view = requireNotNull(web)
-            compose.waitUntil(20_000) {
-                evaluate(view, "!!window.PowerCalSkin?.receive") == "true"
-            }
-            tapWebSelector(view, ".clear-tabbar [data-action=settings]")
-            compose.waitUntil(15_000) {
-                WebSkinBridgeRuntime.state().optString("page") == "SETTINGS"
-            }
-            tapWebSelector(view, "#nativeRecoverySettings")
             compose.waitUntil(15_000) {
                 compose.onAllNodesWithText("个人信息").fetchSemanticsNodes().isNotEmpty()
             }
-            assertEquals("Clear selection remains active in the explicit Native recovery tools",
-                "powercal-clear-default", skinManager.currentId())
+            assertEquals("Emergency recovery must select the independent Native skin",
+                "powercal-default", skinManager.currentId())
             val projection = WebSkinBridgeRuntime.state().toString()
-            assertFalse("Protected profile value must not be projected into Bridge state",
+            assertFalse("Protected profile data must not enter the Web bridge",
                 projection.contains(baseName) || projection.contains(savedName) ||
                     projection.contains("displayName"))
         }
@@ -1971,12 +1961,12 @@ class ClearSettingsOptionsInstrumentedTest {
             saveProfileFromHostTools()
 
             setBaseProfile()
-            openClearNativeRecoveryTools()
+            openNativeRecoveryToolsFromClearSelection()
             saveProfileFromHostTools()
-            assertEquals("Native and Clear-reachable Host tools save the same profile value",
+            assertEquals("Native and recovery-reached Host tools save the same profile value",
                 savedName, profile.getString("displayName", null))
-            println("SEP11_NATIVE_CLEAR_PROFILE_SETTINGS_PARITY nativeSaved=true " +
-                "clearRecoverySaved=true valueHostOwned=true selectedSkinPreserved=true " +
+            println("SEP11_NATIVE_RECOVERY_PROFILE_SETTINGS_PARITY nativeSaved=true " +
+                "emergencyRecoverySaved=true valueHostOwned=true nativeSelected=true " +
                 "storeUnchanged=true")
         } finally {
             compose.runOnUiThread {

@@ -94,9 +94,11 @@ async function main() {
         'Clear Settings still exposes the retired skin catalogue');
       check(!/selectSkin|importSkin|exportClearSkin|exportInstalledSkin|deleteSkin|skinChoices|selectedSkinId/.test(bundledApp),
         'Clear runtime still builds or sends retired skin-management actions');
+      check(!bundledHtml.includes('nativeRecoverySettings')&&
+        !bundledHtml.includes('settings-recovery-section')&&!bundledApp.includes('nativeSettings'),
+        'Clear Settings still exposes the ordinary Native Tools route');
       check(bundledHtml.includes('id="settingsOptionGroups"')&&
         bundledHtml.includes('id="openAiSettings"')&&
-        bundledHtml.includes('id="nativeRecoverySettings"')&&
         bundledHtml.includes('data-action="requestNotificationPermission"'),
         'Clear Settings lost reminder, data-operation, or protected Host controls');
       await loadPackage(original);

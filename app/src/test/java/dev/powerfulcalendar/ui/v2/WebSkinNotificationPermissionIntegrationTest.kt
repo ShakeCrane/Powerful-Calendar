@@ -18,6 +18,7 @@ import dev.powerfulcalendar.core.PowerStore
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -34,7 +35,7 @@ class WebSkinNotificationPermissionIntegrationTest {
     @get:Rule val ui = createAndroidComposeRule<ComponentActivity>()
 
     @Test
-    fun clearSettingsProjectsPermissionAndPreservesNativeRecoveryWithoutStoreWrites() {
+    fun clearSettingsProjectsPermissionAndRejectsNativeToolsSkinRouteWithoutStoreWrites() {
         val backing = ApplicationProvider.getApplicationContext<android.app.Application>()
         shadowOf(backing).denyPermissions(Manifest.permission.POST_NOTIFICATIONS)
         val namespace = "notification-${UUID.randomUUID().toString().take(10)}"
@@ -84,11 +85,9 @@ class WebSkinNotificationPermissionIntegrationTest {
             pendingCount = store.pendingCount()
         ))
 
-        ui.runOnIdle { WebSkinBridgeRuntime.onAction(WebSkinAction.Routed("nativeSettings")) }
-        ui.waitUntil(20_000) { WebSkinBridgeRuntime.state().optString("page") == "TOOLS" }
-        ui.onNodeWithText("工具与设置").assertExists()
-        assertEquals(0, WebSkinBridgeRuntime.state()
-            .getJSONObject("notificationPermission").length())
+        assertNull(decodeBridgeAction(
+            """{"version":1,"type":"action","payload":{"name":"nativeSettings"}}"""))
+        assertEquals("SETTINGS", WebSkinBridgeRuntime.state().optString("page"))
         assertTrue(store.all().isEmpty())
 
         ui.activity.runOnUiThread { ui.activity.setContent {} }

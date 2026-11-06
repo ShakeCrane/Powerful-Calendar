@@ -32,7 +32,7 @@ class WebSkinBridgeTest {
     @Test fun acceptsOnlyClosedTypedActions() {
         assertEquals(WebSkinAction.Routed("today"), decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"today"}}"""))
-        assertEquals(WebSkinAction.Routed("nativeSettings"), decodeBridgeAction(
+        assertNull(decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"nativeSettings"}}"""))
         assertEquals(WebSkinAction.OpenAiSettings, decodeBridgeAction(
             """{"version":1,"type":"action","payload":{"name":"openAiSettings"}}"""))

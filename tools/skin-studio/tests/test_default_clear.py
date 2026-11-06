@@ -64,12 +64,13 @@ class DefaultClearSingleSourceTest(unittest.TestCase):
         self.assertNotIn("skin-choice-list",style)
         self.assertIn('id="openAiSettings"',html)
         self.assertIn('id="openAiSettings" class="memo-limit" type="button" data-action="openAiSettings"',html)
-        self.assertIn('id="nativeRecoverySettings" class="memo-limit" type="button" data-action="nativeSettings"',html)
+        self.assertNotIn('nativeRecoverySettings',html)
+        self.assertNotIn('settings-recovery-section',html)
+        self.assertNotIn('nativeSettings',script)
         self.assertIn('密钥不会发送给皮肤',html)
         self.assertIn('id="settingsOptionGroups"',html)
         self.assertIn('data-action="requestNotificationPermission"',html)
         self.assertIn('data-action="reconcileReminders"',html)
-        self.assertIn('id="nativeRecoverySettings"',html)
         self.assertNotIn('innerHTML',script)
 
     def test_compiled_apk_clear_asset_verifier_checks_exact_bytes(self):
