@@ -7,24 +7,35 @@ OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: 206a2bb9 (adds same-fixture Native Compose/Web point-target geometry and edge-touch instrumentation; no product code or default skin change)
-LATEST_VERIFIED_HEAD: 206a2bb9 (targeted API 35 Android instrumentation 1/1 PASS; previous full serial Gradle gate remains at 7858ee357714a29fba955d9acf7b36715ba22c47, not rerun for this test-only slice)
+LATEST_CODE_HEAD: a8da55828a3ba6d2f0b0c9d12f99ef8213ed08be (aligns the AI input maximum with frozen Native/Core 6000-code-unit boundary)
+LATEST_VERIFIED_HEAD: a8da55828a3ba6d2f0b0c9d12f99ef8213ed08be (serial full Gradle gate 983/983 JVM PASS; source boundaries, assembleDebug, lintDebug, AndroidTest compile/package PASS; isolated API 35 WebView boundary test 1/1 PASS; Studio bridge E2E and package verification PASS)
 CURRENT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
 TASK_STATUS: IN_PROGRESS
 PRODUCT_CUTOVER: HOLD
 TASK_BASE_HEAD: e41246d7ebe5b329adbdc657bd3e53735695efa1
-WORKING_APK_SHA256: 39A89C98A0789963EFABCD8DC13106D55859ADCBB24378B10D11920ACA91D634
-WORKING_DEFAULT_SKIN_SHA256: 7AA3700A0D1E1CE1F19943CE012595E55A933B8D75FBFDBE306987537CDFE3EC
+WORKING_APK_SHA256: EF29297DF78D253E2A9C3ED03B24C81664CC23CD2A429874B8C7E348D3E3789B
+WORKING_DEFAULT_SKIN_SHA256: 2C503559A2CD7FAE57C2F40E529A05913D41B3192931458D17771AF2714F9E4E
 WORKING_DEFAULT_SKIN_ID: powercal-clear-default
 NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; implementation and full parity remain IN PROGRESS)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
-LAST_COMPLETED_TASK: Native 0.9.5 in-view Deadline point-target bounds and edge samples (narrow PASS; full Timeline remains PARTIAL)
-LAST_COMPLETED_COMMIT: 206a2bb9
+LAST_COMPLETED_TASK: Native 0.9.5 AI chat composer maximum-length boundary (narrow PASS; AI page remains PARTIAL)
+LAST_COMPLETED_COMMIT: a8da55828a3ba6d2f0b0c9d12f99ef8213ed08be
 LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; see audit and latest Android evidence)
-LAST_ATTEMPTED_COMMIT: 206a2bb9 (test-only geometry slice; broader parity task remains IN_PROGRESS)
+LAST_ATTEMPTED_COMMIT: a8da55828a3ba6d2f0b0c9d12f99ef8213ed08be (input boundary slice complete; broader parity task remains IN_PROGRESS)
 NEXT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
-NEXT_ACTION: Resolve the audited AI composer input-cap discrepancy. Compare frozen Native `AiChatScreen` (6000 chars) with Web input (4000 chars), inspect the formal Host/Core request limit before changing UI, then add boundary tests and a real WebView input check if the existing contract allows 6000. Do not change AI business/API limits without evidence. Afterward continue the finite page-difference audit; no page is fully signed off and Product Cutover remains HOLD.
+NEXT_ACTION: Audit the bounded AI history projection discrepancy. Frozen Native `AiChatScreen` renders the history list it receives; `WebAiChatHistory.kt` currently projects at most 40 messages and truncates each content field to 1600 characters, while Core accepts up to 6000 per message. Trace the actual Native and Web source-to-screen paths, history load/paging contracts, and existing tests before deciding whether this is a user-visible parity defect or a documented display bound. Reproduce with a deterministic history and compare the original frozen APK with Web v3. Do not change Core/history semantics without evidence. Keep AI and overall Native parity PARTIAL and Product Cutover HOLD.
 LAST_TASK_EVIDENCE:
+  NATIVE_095_AI_INPUT_LIMIT:
+    status: PASS (6000-code-unit composer boundary only; AI page and overall Native parity remain PARTIAL)
+    source_baseline: b1f7629f0c52812e1887443872f43aa6c49908c4
+    reference_apk_sha256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
+    code_commit: a8da55828a3ba6d2f0b0c9d12f99ef8213ed08be
+    android: PowerCal_Wave2_QA35_20261104 / emulator-5556, API 35, WebView 124.0.6367.219; actual WebView textarea/form → MessagePort → Host → Core → local stub; 6000 characters received and persisted; Calendar Store snapshot unchanged
+    tests: serial full Gradle gate 983/983 JVM, zero failures/errors/skips; both source boundaries, assembleDebug, lintDebug, AndroidTest compile/package PASS; targeted Android test 1/1 PASS; Node syntax, Studio bridge E2E, package verification PASS
+    current_apk_sha256: EF29297DF78D253E2A9C3ED03B24C81664CC23CD2A429874B8C7E348D3E3789B
+    current_skin_sha256: 2C503559A2CD7FAE57C2F40E529A05913D41B3192931458D17771AF2714F9E4E (10 files, one package, source/APK identical)
+    evidence: .local/android-test/reports/native095-ai-input-20261106/manifest.md; docs/issues/PC-ISSUE-SEPARATION-NATIVE-AI-INPUT-LIMIT-20261106.md; audit docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md
+    limits: test populated the WebView input via script (physical keyboard not tested); raw Native APK 6000-character input not directly compared; AI history, attachment, proposal, error/retry and menu visual parity remain open; Product Cutover HOLD
   NATIVE_095_EDGE_POINT_HIT_SLICES:
     status: PASS (bounded edge slivers and actual click reachability only; Timeline remains PARTIAL)
     source_baseline: b1f7629f0c52812e1887443872f43aa6c49908c4

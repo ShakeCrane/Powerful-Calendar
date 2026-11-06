@@ -1,3 +1,13 @@
+## 2026-11-06 Native 0.9.5 AI 输入上限边界（窄切片 PASS）
+
+- **范围：**依据冻结源码 `b1f7629f0c52812e1887443872f43aa6c49908c4` 和原始 APK SHA-256 `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`，将默认 Web Skin 与正式 Core/Host 的 AI 消息输入上限从 4000 对齐到既有 6000 UTF-16 code unit。AI 页面、Native/Web 整体交互及视觉 parity 仍为 `PARTIAL`；Product Cutover 仍 `HOLD`。
+- **实现与保护：**调整 Clear 文本框、提交 guard、Host action 解码；将完整桥接 JSON 的有界包络提高至 40,960 字符，以容纳合法控制字符转义。每个 action 的闭合字段 schema 和 `sendChat` 6000 字符边界仍执行。未修改 Core 业务逻辑、数据库、凭据、Skin ID、默认皮肤视觉或 Native 恢复。
+- **验证：**串行 Gradle 完整门禁 `983/983` JVM、0 failures/errors/skips；源码边界、Debug APK、Lint、AndroidTest 编译/打包 PASS。目标 API 35 AVD `PowerCal_Wave2_QA35_20261104` / `emulator-5556` / WebView 124.0.6367.219 上，真实 WebView 表单经 MessagePort、Host、Core 到本地 Stub，确认 6000 字符完整送达/持久化，Calendar Store 快照不变，仪器用例 1/1 PASS。Node syntax、Studio bridge E2E、正式包校验 PASS。
+- **产物：**APK SHA-256 `EF29297DF78D253E2A9C3ED03B24C81664CC23CD2A429874B8C7E348D3E3789B`；APK 唯一包 `powercal-clear-default.pcskin` 10 files / 411736 bytes，源码/APK SHA-256 均为 `2C503559A2CD7FAE57C2F40E529A05913D41B3192931458D17771AF2714F9E4E`。
+- **证据与限制：**日志 `.local/android-test/reports/native095-ai-input-20261106/manifest.md`；Issue `docs/issues/PC-ISSUE-SEPARATION-NATIVE-AI-INPUT-LIMIT-20261106.md`。用例通过脚本填入真实 WebView textarea 再调用实际表单处理器，未验证软键盘逐字输入；未在原始 APK 上端到端输入 6000 字符。初次 Native 端长消息等待超时与触控构造失败已如实记录，不作为 PASS 或产品缺陷结论。
+- **提交/推送：**`a8da55828a3ba6d2f0b0c9d12f99ef8213ed08be` (`fix(parity): 对齐 AI 聊天输入长度上限`)，已正常推送至 `origin/codex/skin-single-default-closure`。
+- **下一项：**有限审计 AI 历史投影：冻结 Native `AiChatScreen` 渲染其输入历史；Web `WebAiChatHistory.kt` 当前最多投影 40 条、每条最多 1600 字，Core 单条上限为 6000。先追踪真实加载/分页和屏幕行为，用确定性数据在冻结 APK 与 Web v3 对照；证据确认前不改历史语义。
+
 ## 2026-11-06 Native 0.9.5 定时点事件视口边缘命中（窄切片 PASS）
 
 - **代码提交：** `7858ee357714a29fba955d9acf7b36715ba22c47`，已正常推送到 `origin/codex/skin-single-default-closure`。整体视觉迁移仍 `IN_PROGRESS`，Timeline/全页仍 `PARTIAL`，Product Cutover `HOLD`。
