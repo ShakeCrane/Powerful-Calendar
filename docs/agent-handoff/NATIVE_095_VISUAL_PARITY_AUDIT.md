@@ -577,7 +577,7 @@ Raw/Web fixture Store 均为 drafts=0, commits=8, identities=8，无夹具外写
 | 页面/组件 | 已有等价或正式路径 | 需要移植或实测的差异 | 当前证据边界 |
 |---|---|---|---|
 | Timeline | 当前已有同夹具双翼、真实时间几何、框外标题/折叠和 ALARM 标题窄切片；交互走 Web Host。 | DEADLINE 标题位置、ACTIVITY 卡片/样式、所有类型在深色/大字体/重复实例与完整 Camera 状态。 | ALARM 标题和前述双翼用原始 APK 与 Web v3 实际对照；Timeline 整页仍 PARTIAL。 |
-| Month | 七列 4–6 行日期格、选择/月切换、Agenda、重复实例打开走 Core/Host；弹窗、日格及部分 Agenda 有独立实屏切片。 | 冻结 `MonthScreen.kt::NativeMonthScreen` 将 >72dp 横向切月手势放在整个 `LazyColumn`；Web `app.js` 只从 `#monthGrid` 开始监听。Web 重复项投影设 owner/item 上限，Native 冻结路径给 `displayOccurrences` 完整记录，截断边界需核对。 | 现有网格滑动及 F-03 实例证据是 PREVIOUS PASS；Agenda/标题区域横滑与上限边界未做当前成对设备验证。Month 整页 PARTIAL。 |
+| Month | 七列 4–6 行日期格、选择/月切换、Agenda、重复实例打开走 Core/Host；弹窗、日格及部分 Agenda 有独立实屏切片。 | 整页横滑命中范围及平台 slop/严格阈值已由 2026-11-06 原始 APK 与 Web v3 设备对照闭合；Web 重复项投影仍设 400 owner / 350 item 上限，需验证上游记录边界及高密度月份的可见性。 | Month 手势窄切片 PASS；重复投影上限和其余视觉/交互仍未完整配对，Month 整页 PARTIAL。 |
 | Memo | `MemoFeatureApiV1` 已给出 `kind`、`startMillis`、`zoneId`、`repeating`、eventSeq/revision；完成/撤销和打开走正式 API。 | 冻结 `MemoCenterScreen.kt::NativeMemoCenterScreen` 每行显示标题、类型、本地日期、重复标记、序号；当前 `WebSkinMemoProjection.build()` 未投影 kind/zoneId，`renderMemo()` 只输出完成控件和标题。Web 有 250 项续页按钮，Native 冻结 `LazyColumn` 不显示续页控件。 | 空态、筛选和 Web 分页有历史实测；非空 Native/Web 行元数据、超 250 项可达性及同实例完成/编辑未配对。可用现有 Memo DTO，不需新增业务规则或 Core API。 |
 | AI | 聊天、提案、附件通过正式 Host/Core 路由；Web 消息动作已有局部真实触摸证据。 | Native 输入上限 6000，Web 输入控件/Host 上限 4000；Web 历史窗口限制 40 条且单条内容最多 1600 字符，Native 冻结页面使用完整历史。提案审核滚动区、溢出菜单形态与配置返回路径不同。 | F-07 的 Stub/审批通过是历史功能证据；真实服务商 NOT TESTED。原始 APK 与 Web 菜单/长历史/提案滚动状态未同夹具比较，AI 整页 PARTIAL。 |
 | Settings / 系统操作 | 权限、SAF、提醒、ICS、备份及受保护凭据由 Host/Android 完成，Web 发正式动作。 | 卡片分组/顺序/状态反馈仍需同状态逐项对照；冻结 Native 中的皮肤候选、导入/导出/删除目录 UI 已被 Owner 退役，不属于待移植表面。 | F-08 系统动作是此前 API 35 PREVIOUS PASS，不等于当前全状态视觉对照。Native 恢复及可信系统能力保留。 |
@@ -626,4 +626,27 @@ Raw/Web fixture Store 均为 drafts=0, commits=8, identities=8，无夹具外写
 
 动作仍经 `browseMonth` → `WebSkinHost` 校验 → `PowerCalApp` 更新视图状态，不直接修改 Calendar Store。现有 `NativeClearMonthOccurrenceParityInstrumentedTest.nativeAndClearMonthGridSwipesNavigateOneMonthWithoutSelectingOrWriting` 只从 Web 月格触发；尚未验证页头、月份栏、agenda 标题/事件卡、页尾起手、严格阈值边缘、竖滑/斜滑仲裁或滑过卡片后不误开事件。此测试也不是冻结原始 APK 与 Web v3 的真实 APK 成对设备验收。
 
-下一步先实测屏幕 dp 与 Web CSS 坐标换算及原生阈值触发点，再决定最小实现。原始 APK 与 Web v3 应在隔离 API 35 AVD 上以同月份数据完成双向切月；同时检查选中日期、事件目标、Camera、纵向滚动及 Store 快照。此处只记录差异，不预先标记功能 PASS。Native 恢复和 Product Cutover HOLD 均不变。
+以下是开始实现前的审计快照；设备结果已由文末的 2026-11-06 窄切片补充。Native 恢复和 Product Cutover HOLD 均不变。
+
+## Month 整页横向切月与触控仲裁（2026-11-06）
+
+**状态：手势窄切片 PASS；Month 页面整体仍 PARTIAL。** 本节只替代前一节对“命中范围与阈值尚未设备验证”的状态，不代表月份页其余表现或重复实例投影已经签核。
+
+冻结 Native 参考为 `b1f7629f0c52812e1887443872f43aa6c49908c4`。冻结 `MonthScreen.kt::NativeMonthScreen` 在整页 `LazyColumn` 上识别水平拖动；8 dp 平台触摸 slop 之后，水平剩余距离必须**严格大于** 72 dp 才切月。当前 Web 将 Host 的 `ViewConfiguration.scaledTouchSlop / density` 以 presentation-only meta 注入 entry HTML；没有改解析器、Host 权限或业务 API。Web 手势从 `#monthPage` 接收触点，接受 Android WebView 的受信空 `pointerType` 与显式 touch/pen，拒绝 mouse；过 slop 的横向动作会消费关联 click，纵向拖动、取消和无障碍 detail=0 click 仍分别处理。
+
+### 真实设备对照
+
+- 冻结原始 APK 原样运行在隔离 `PowerCal_Native095_RawFixture_20261106` / `emulator-5590`；当前 Web v3 Debug APK 安装在隔离 `PowerCal_Wave2_QA35_20261104` / `emulator-5556`。两端均 Android API 35、1080×2400、420 dpi；WebView 为 `124.0.6367.219`。原始 APK 未替换；Web 测试应用独立安装，未触碰真机或系统日历数据。
+- 同一确定性 fixture 的 Native Compose 与 WebView instrumentation 验证：5 dp 点击抖动均保留月份选择器 tap；20 dp 横向移动取消 tap 但不切月；总距离 79 dp 不切月、81 dp 切月。页头、月格、agenda 事件卡和页尾均可切月；滑过 agenda 事件卡的合成 click 被取消，未误开编辑器。Camera 和 Store 计数在手势前后不变。
+- APK 独立触摸复核：页头实际输入 208 px（79.24 dp）保持 November，214 px（81.52 dp）切至 December，反向 214 px 恢复 November。Studio 浏览器 E2E 另验证 mouse 拖动不切月、短 tap、平台 slop、严格阈值、竖向滚动及 Camera 不变。
+
+实现证据位于 `WebSkinHost.kt`（平台 slop 投影）、`default-clear/source/web/app.js` 与 `style.css`（整页事件处理和 `touch-action: pan-y`）、`NativeClearMonthOccurrenceParityInstrumentedTest.kt`（Native/Clear 配对断言）、`e2e_v3_month_selection.cjs`（浏览器交互断言）。核心交互仍发送既有 `browseMonth` Host action；选择/切换月份不写 Calendar Store。
+
+### 本轮验证与产物
+
+- 串行完整 Gradle 门禁 PASS：边界检查、`assembleDebug`、Lint、AndroidTest Kotlin 编译 PASS；JVM 978/978，无失败、错误或跳过。最终 Android instrumentation 1/1 PASS。Studio distribution 2/2、v3 preview 11/11、变更 JS `node --check` 和 browser E2E PASS。
+- 失败/重试如实保留：第一次完整 JVM 门禁遇到既有 `SystemCalendarImportTest.rejectedItemsArePersistedAsWarningsWithoutCalendarWrites` 的 SQLite `SQLITE_BUSY`，定向复测通过且随后完整门禁通过；早期 Android 尝试分别暴露测试命中区过窄和 WebView 124 的受信空 `pointerType`，最终实现基于观测修正并通过。早期 Browser E2E 曾 header timeout，独立目录最终重跑 PASS。
+- 最终 Debug APK SHA-256：`479B01BF9D4D8DC2CFD30839047DAFA7025DA7BE75A327732DBE75DF645181EB`；正式默认包 `powercal-clear-default.pcskin` SHA-256：`E5CA9803AAD5A450AE639773477A7F2EDEF047334CFA567527B2E3296738EAB8`，10 项，APK 资源与源码产物逐字节一致；APK 仅含这一份正式 `.pcskin`。
+- 原始 APK 与最终 Web 页面/阈值截图、逐次日志、测试 XML 和所有尝试记录见 `.local/android-test/reports/native095-month-page-swipe-20261106/manifest.md`。问题报告：`docs/issues/PC-ISSUE-SEPARATION-NATIVE-MONTH-PAGE-SWIPE-20261106.md`。
+
+本窄切片没有签核 Month 重复投影上限（Web `MAX_OWNERS=400`、`MAX_ITEMS=350`）、月份状态的完整视觉一致性、所有事件类别与跨月重复渲染、其它页面、TalkBack 或物理/OEM 兼容。原始与当前应用截图使用独立数据库；配对交互测试使用隔离同数据 fixture，手势前后 Store 无变更。Native 恢复、唯一默认 Skin ID 和生产 Cutover 均未改变；Product Cutover 仍 HOLD。
