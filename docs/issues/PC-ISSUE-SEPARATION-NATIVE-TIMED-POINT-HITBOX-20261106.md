@@ -1,7 +1,7 @@
 # PC-ISSUE-SEPARATION-NATIVE-TIMED-POINT-HITBOX-20261106
 
 **状态：PARTIAL（可视时间窗内的点位热区方向和视口边缘命中 sliver 已移植；Timeline 整体仍未闭合）**
-**代码提交：** `06649a334d12d0e7e9371fcc08d26a3fcc7ee9ad`  
+**代码提交：** `06649a334d12d0e7e9371fcc08d26a3fcc7ee9ad`（可视窗内方向）与 `7858ee357714a29fba955d9acf7b36715ba22c47`（边缘候选及命中）。
 **基准：** 冻结原生 0.9.5-rc.1，源码 `b1f7629f0c52812e1887443872f43aa6c49908c4`  
 **日期：** 2026-11-06
 

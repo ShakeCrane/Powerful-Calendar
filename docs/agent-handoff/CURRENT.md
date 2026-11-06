@@ -7,24 +7,36 @@ OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: 06649a334d12d0e7e9371fcc08d26a3fcc7ee9ad (align timed point-event hit regions with frozen Native; in-viewport point slice verified; full parity remains IN PROGRESS)
-LATEST_VERIFIED_HEAD: 06649a334d12d0e7e9371fcc08d26a3fcc7ee9ad (serial full Gradle gate 981/981 JVM, source boundaries, assembleDebug, lintDebug, AndroidTest compile PASS; API 35 WebView install and visible Deadline tap PASS; browser point-geometry probe PASS; full Studio Python/browser suites retain unrelated existing failures documented below)
+LATEST_CODE_HEAD: 7858ee357714a29fba955d9acf7b36715ba22c47 (bounded Host edge candidates and 80 physical-pixel point clipping; narrow raw APK/WebView edge interaction verified; full parity remains IN PROGRESS)
+LATEST_VERIFIED_HEAD: 7858ee357714a29fba955d9acf7b36715ba22c47 (serial full Gradle gate 982/982 JVM, source boundaries, assembleDebug, lintDebug, AndroidTest compile PASS; raw frozen APK upper-edge Deadline tap and WebView dual-edge instrumentation 1/1 PASS; default package source/APK SHA verified)
 CURRENT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
 TASK_STATUS: IN_PROGRESS
 PRODUCT_CUTOVER: HOLD
 TASK_BASE_HEAD: e41246d7ebe5b329adbdc657bd3e53735695efa1
-WORKING_APK_SHA256: F288BAB9DE9C9DE059FD9BC5CD85395E77C329D65DB9AC57B06B6E1142BB0F3D
-WORKING_DEFAULT_SKIN_SHA256: 4F027EDEEF8B8F60BE3C3DA778BDC54E79601ADB04CBD5D92FAC9A74C3922366
+WORKING_APK_SHA256: 39A89C98A0789963EFABCD8DC13106D55859ADCBB24378B10D11920ACA91D634
+WORKING_DEFAULT_SKIN_SHA256: 7AA3700A0D1E1CE1F19943CE012595E55A933B8D75FBFDBE306987537CDFE3EC
 WORKING_DEFAULT_SKIN_ID: powercal-clear-default
 NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; implementation and full parity remain IN PROGRESS)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
-LAST_COMPLETED_TASK: Native 0.9.5 timed-point hitbox direction alignment (in-viewport narrow PASS; edge visibility and full Timeline parity remain PARTIAL)
-LAST_COMPLETED_COMMIT: 06649a334d12d0e7e9371fcc08d26a3fcc7ee9ad
+LAST_COMPLETED_TASK: Native 0.9.5 Timeline timed-point viewport-edge hit slivers (narrow PASS; full Timeline remains PARTIAL)
+LAST_COMPLETED_COMMIT: 7858ee357714a29fba955d9acf7b36715ba22c47
 LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; see audit and latest Android evidence)
-LAST_ATTEMPTED_COMMIT: 06649a334d12d0e7e9371fcc08d26a3fcc7ee9ad (timed point hitbox slice; broader parity task remains IN_PROGRESS)
+LAST_ATTEMPTED_COMMIT: 7858ee357714a29fba955d9acf7b36715ba22c47 (timed-point edge slice; broader parity task remains IN_PROGRESS)
 NEXT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
-NEXT_ACTION: Reconcile point events just outside the visible time window: Native retains points within its 80px clip margin, while WebSkinTimelineProjection/app.js currently drop them at the exact camera boundary. Add a bounded projection margin tied to actual viewport geometry, then verify partially visible ALARM/DEADLINE hit targets on raw APK and WebView. The in-viewport DEADLINE title and directional hitbox were compared and migrated; Web target bounds remain 6px taller and 13px wider than Native in this AVD and must stay documented. Month, Memo, Timeline and whole-surface parity remain PARTIAL. AI history/input limits and editor-shell geometry remain open. Product Cutover remains HOLD.
+NEXT_ACTION: Measure and close the remaining in-viewport point-target bounds delta using the same event fixture, date, timezone and camera in raw 0.9.5 APK and WebView: prior measured Native bounds `[267,1112]-[477,1259]`, Web bounds `[267,1109]-[490,1262]`. Capture fresh screenshots, Compose/DOM geometry and real taps before changing CSS/viewport mapping; preserve the 56dp directional target and the verified 80px edge clipping. Then continue the next measured Native/Web state difference from the whole-page audit. Timeline and all-page parity remain PARTIAL; Product Cutover remains HOLD.
 LAST_TASK_EVIDENCE:
+  NATIVE_095_EDGE_POINT_HIT_SLICES:
+    status: PASS (bounded edge slivers and actual click reachability only; Timeline remains PARTIAL)
+    source_baseline: b1f7629f0c52812e1887443872f43aa6c49908c4
+    reference_apk_sha256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
+    code_commit: 7858ee357714a29fba955d9acf7b36715ba22c47
+    raw_android: PowerCal_Native095_RawFixture_20261106 / emulator-5590, API 35, 1080x2400, 420dpi, GMT; installed base.apk matches reference file; existing Deadline #0012 clicked at upper-edge sliver, no save
+    web_android: PowerCal_Wave2_QA35_20261104 / emulator-5556, API 35, WebView 124.0.6367.219; dual-edge actual touch test 1/1 PASS; 8h distant point omitted
+    tests: serial full Gradle gate 982/982 JVM, 0 failures/errors/skips; both source boundaries, assembleDebug, lintDebug, AndroidTest Kotlin compile PASS; package verifier PASS; targeted instrumentation 1/1 PASS; changed-file Node syntax PASS
+    current_apk_sha256: 39A89C98A0789963EFABCD8DC13106D55859ADCBB24378B10D11920ACA91D634
+    current_skin_sha256: 7AA3700A0D1E1CE1F19943CE012595E55A933B8D75FBFDBE306987537CDFE3EC (10 files, one package, source/APK identical)
+    evidence: .local/android-test/reports/native095-edge-points-20261106/manifest.md; docs/issues/PC-ISSUE-SEPARATION-NATIVE-TIMED-POINT-HITBOX-20261106.md; audit docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md
+    limits: different isolated fixture/camera positions, so this proves frozen edge behavior and Web touch reachability, not whole-page pixel equality; no Core or Store code changed; Product Cutover HOLD
   NATIVE_095_ALARM_POINT_TITLE:
     status: PASS (ALARM title typography, type color and title-box geometry only; Timeline remains PARTIAL)
     source_baseline: b1f7629f0c52812e1887443872f43aa6c49908c4

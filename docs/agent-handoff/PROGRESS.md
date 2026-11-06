@@ -1,3 +1,13 @@
+## 2026-11-06 Native 0.9.5 定时点事件视口边缘命中（窄切片 PASS）
+
+- **代码提交：** `7858ee357714a29fba955d9acf7b36715ba22c47`，已正常推送到 `origin/codex/skin-single-default-closure`。整体视觉迁移仍 `IN_PROGRESS`，Timeline/全页仍 `PARTIAL`，Product Cutover `HOLD`。
+- **实现：**Host 投影从有界 occurrence 集合补充最近的视口外定时点候选；默认 Skin 仅将距离视口不超过 `80 / devicePixelRatio` CSS px 的点目标带入裁剪区。ACTIVITY 和日期型 Deadline 的窗口规则未变，默认包 ID 未变。
+- **原始 APK 实测：**设备 `PowerCal_Native095_RawFixture_20261106` / `emulator-5590`、API 35、1080×2400、420 dpi、GMT；已安装 `base.apk` 与冻结 APK 文件 SHA-256 均为 `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`。使用既有 Deadline #0012，把其目标移至视口上缘后实点 `(360,430)`，原始 APK 打开对应编辑器；未保存、未清除数据。
+- **WebView 实测：**设备 `PowerCal_Wave2_QA35_20261104` / `emulator-5556`、API 35、WebView 124.0.6367.219。上缘 ALARM 与下缘 Deadline hit sliver 均由 `elementFromPoint` 与真实触控命中；8h 远点位未渲染。Native/Web 隔离 Store 均保持 `(0 drafts, 3 commits, 3 identities)`。仪器测试 `nativeAndClearExposeTimedPointHitSliversAtBothTimelineViewportEdges` 1/1 PASS。
+- **门禁：**完整串行 Gradle `BUILD SUCCESSFUL`；982/982 JVM、0 failures/errors/skips；源码边界、assembleDebug、lintDebug、AndroidTest Kotlin 编译通过。正式默认包验证通过：仅一份 `powercal-clear-default.pcskin`，10 files，411738 bytes，源包/APK 内包 SHA-256 `7AA3700A0D1E1CE1F19943CE012595E55A933B8D75FBFDBE306987537CDFE3EC`。Debug APK SHA-256 `39A89C98A0789963EFABCD8DC13106D55859ADCBB24378B10D11920ACA91D634`。
+- **证据：**`.local/android-test/reports/native095-edge-points-20261106/manifest.md`；问题与几何差异：`docs/issues/PC-ISSUE-SEPARATION-NATIVE-TIMED-POINT-HITBOX-20261106.md`；全页状态：`docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md`。
+- **限制与下一动作：**该切片证明原始行为和 Web 可触，不是同像素 A/B。继续实测并缩小原生/Web 可视点目标边界差异，再按全页审计逐项闭合。真机/OEM、全 Timeline、其他页面均未因此签核。
+
 ## 2026-11-06 Native 0.9.5 Timeline 双翼边界与滚动范围（窄切片 PASS）
 
 - **状态与范围：**Native Compose 参考路径与 Android Web v3 的双翼物理边界、滚动范围、独立触控窄切片 `PASS`；没有在本切片直接运行原始冻结 APK 的同夹具测试，整屏及 Timeline 完整迁移继续 `PARTIAL/IN_PROGRESS`；Product Cutover `HOLD`。
