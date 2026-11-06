@@ -6,7 +6,7 @@ Status: **NARROW PASS** for message surface colors, typography, corner shape, al
 
 - Frozen source: `b1f7629f0c52812e1887443872f43aa6c49908c4`.
 - Frozen APK: `.local/android-test/artifacts/physical-qa/PowerCal-0.9.5-rc.1-b1f7629-debug-core-HOLD.apk`, SHA-256 `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`.
-- Native reference implementation: `native-skin/src/main/java/dev/powerfulcalendar/ui/v2/nativeui/AiChatScreen.kt` and `NativeSkinThemeDefaults.kt`.
+- Frozen-tree reference implementation: `app/src/main/java/dev/powerfulcalendar/ui/v2/AiChatScreen.kt` and `PowerTheme.kt`. The AI source and Native theme defaults were later moved into `native-skin/`; Git detects the AI screen move at 82% similarity. The bubble recipe and palette are cited from the frozen-tree files; the raw APK screenshot is the rendered reference.
 - The comparison used the same deterministic 42-message synthetic history, API 35, 1080x2400 at 420 dpi, and System WebView 124.0.6367.219. It changes only the canonical default Skin presentation and its Android test; no Core or Host behavior changed.
 
 ## Result
