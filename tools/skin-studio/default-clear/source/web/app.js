@@ -192,6 +192,17 @@ const dateText=(ms,zone,options)=>{
   try{return new Intl.DateTimeFormat("zh-CN",{timeZone:zone||"Asia/Shanghai",...options}).format(new Date(ms))}
   catch{return new Date(ms).toISOString().slice(0,10)}
 };
+const memoLocalDate=(ms,zone)=>{
+  const value=Number(ms);
+  if(!Number.isFinite(value)||Number.isNaN(new Date(value).getTime()))return "无日期";
+  try{
+    const parts=Object.fromEntries(new Intl.DateTimeFormat("en-US",{
+      timeZone:zone,year:"numeric",month:"2-digit",day:"2-digit"
+    }).formatToParts(new Date(value)).map(part=>[part.type,part.value]));
+    if(parts.year&&parts.month&&parts.day)return `${parts.year}-${parts.month}-${parts.day}`;
+  }catch{}
+  return "无日期";
+};
 const relativeTime=(ms,zone)=>dateText(ms,zone,{hour:"2-digit",minute:"2-digit",hour12:false});
 const proposalDateText=(ms,zone)=>{
   const value=Number(ms);if(!Number.isFinite(value))return "无效日期";
@@ -1173,6 +1184,7 @@ function renderMemo(){
   if(!entries.length){list.append(node("p","quiet","目前没有待处理事项"))}
   for(const item of entries){
     const row=node("div","memo-row"+(item.completed?" done":""));
+    row.dataset.eventSeq=item.eventSeq;
     const button=node("button","",item.completed?"✓":"");
     button.type="button";button.setAttribute("aria-label",item.completed?"恢复未完成":"完成 Memo");
     button.dataset.action="toggleMemo";button.dataset.eventSeq=item.eventSeq;
@@ -1186,7 +1198,16 @@ function renderMemo(){
     title.dataset.revision=item.revision;
     if(typeof item.originalOccurrenceKey==="string")
       title.dataset.originalOccurrenceKey=item.originalOccurrenceKey;
-    row.append(button,title);list.append(row);
+    const content=node("div","memo-content");
+    const kindLabel={ALARM:"闹钟",ACTIVITY:"活动",DEADLINE:"截止",MEMO:"备忘"}[item.kind]||String(item.kind||"事件");
+    const dateLabel=item.startMillis==null?"无日期":memoLocalDate(item.startMillis,item.zoneId);
+    const meta=node("span","memo-meta",`${kindLabel} · ${dateLabel}${item.repeating?" · 重复":""}`);
+    const sequence=node("span","memo-sequence",`#${String(item.eventSeq).padStart(4,"0")}`);
+    row.addEventListener("click",event=>{
+      if(event.target.closest("[data-action]"))return;
+      title.click();
+    });
+    content.append(title,meta);row.append(button,content,sequence);list.append(row);
   }
   const remaining=Math.max(0,Number(state.memoRemainingCount)||0);
   $("memoLimit").textContent=`加载更多（还有 ${remaining} 项）`;

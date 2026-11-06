@@ -24,6 +24,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.powerfulcalendar.MainActivity
 import dev.powerfulcalendar.core.DraftForm
+import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.RecurrenceEngine
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.TemporalRecord
@@ -45,9 +46,9 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Captures the same deterministic eight-event Timeline fixture from the frozen APK's Native
- * renderer and the current official Web v3 skin. The raw APK case uses a newly created disposable
- * QA AVD's empty default Store; the Web case uses a unique temporary Store removed in finally.
+ * Captures frozen Native and current official Web v3 surfaces on isolated API 35 AVDs. The raw
+ * reference AVD retains its dedicated eight-event Timeline fixture and owned Memo rows; the Web
+ * case uses a unique temporary Store removed in finally.
  */
 @RunWith(AndroidJUnit4::class)
 class Native095RawAndWebDualWingInstrumentedTest {
@@ -113,6 +114,302 @@ class Native095RawAndWebDualWingInstrumentedTest {
         screenshotName = "native095-web-v3-dual-wing.png"
     )
 
+    @Test
+    fun frozen095NativeMemoRowsUseFrozenMetadataAndOpenWithoutStoreWrites() =
+        runMemoMetadataFixture("powercal-default")
+
+    @Test
+    fun currentWebV3MemoRowsUseFrozenMetadataAndOpenWithoutStoreWrites() =
+        runMemoMetadataFixture("powercal-clear-default")
+
+    private fun runMemoMetadataFixture(skinId: String) {
+        val frozenNative = skinId == "powercal-default"
+        val storage = compose.activity.applicationContext
+        val namespace = "native095-memo-${UUID.randomUUID()}"
+        val databaseName = "memo-fixture.db"
+        val context = if (frozenNative) storage else IsolatedAppContext(compose.activity, storage, namespace)
+        val store = if (frozenNative) PowerCalStores.get(storage)
+            else PowerStore(context, databaseName)
+        val baselineRecords = store.all()
+        val onboarding = context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+        val hadOnboardingPromptFlag = onboarding.contains("system-calendar-import-asked")
+        val previousOnboardingPromptFlag = onboarding.getBoolean("system-calendar-import-asked", false)
+        val zone = ZoneId.systemDefault()
+        val today = LocalDate.now(zone)
+        val datedDate = today.plusDays(1)
+        val repeatingDate = today.plusDays(3)
+        val datedTitle = "MEMO_VISUAL_DATED_TITLE"
+        val undatedTitle = "MEMO_VISUAL_UNDATED_TITLE"
+        val repeatingTitle = "MEMO_VISUAL_REPEATING_TITLE"
+        val forms = listOf(
+            DraftForm(kind = TemporalKind.MEMO, title = datedTitle,
+                startText = datedDate.toString(), zoneId = zone.id, trackingEnabled = true),
+            DraftForm(kind = TemporalKind.MEMO, title = undatedTitle,
+                zoneId = zone.id, trackingEnabled = true),
+            DraftForm(kind = TemporalKind.MEMO, title = repeatingTitle,
+                startText = repeatingDate.toString(), zoneId = zone.id, trackingEnabled = true,
+                recurrence = Recurrence(freq = dev.powerfulcalendar.core.RecurrenceFreq.DAILY, count = 2))
+        )
+        val fixtureTitles = forms.map { it.title }.toSet()
+        if (frozenNative) {
+            discardOwnedMemoFixtureDrafts(store,
+                baselineRecords.filter { it.title in fixtureTitles }.map { it.eventSeq }.toSet(), fixtureTitles)
+        }
+        val baselineCounts = counts(store)
+        val seeded = mutableListOf<Pair<DraftForm, Long>>()
+        var seededInThisRun = false
+        val originalSkin = PowerCalSkinRegistry.active
+        var web: WebView? = null
+        try {
+            if (frozenNative) {
+                val expectedBaseline = (0..3).map { "WING_LEFT_$it" } + (0..3).map { "WING_RIGHT_$it" }
+                val rawOriginalRecords = baselineRecords.filterNot { it.title in fixtureTitles }
+                assertEquals("Raw reference AVD must retain its original isolated eight-event fixture",
+                    expectedBaseline.toSet(), rawOriginalRecords.map { it.title }.toSet())
+                assertEquals(8, rawOriginalRecords.size)
+                val existingFixtureRows = baselineRecords.filter { it.title in fixtureTitles }
+                assertTrue("Raw reference AVD may contain only this test's exact prior Memo fixture",
+                    existingFixtureRows.isEmpty() || existingFixtureRows.map { it.title }.toSet() == fixtureTitles)
+                if (existingFixtureRows.isNotEmpty()) {
+                    assertEquals(3, existingFixtureRows.size)
+                    assertTrue(existingFixtureRows.all { it.kind == TemporalKind.MEMO })
+                    forms.forEach { form ->
+                        val row = existingFixtureRows.single { it.title == form.title }
+                        seeded += form to row.eventSeq
+                    }
+                }
+                assertEquals("Only terminal fixture drafts may remain after a prior interrupted run", 0,
+                    seeded.sumOf { (_, seq) -> store.pendingDraftsFor(seq).size })
+            }
+            if (seeded.isEmpty()) {
+                seededInThisRun = true
+                forms.forEach { form ->
+                    val result = store.createFormalEvent(form, "native095-memo-${UUID.randomUUID()}")
+                        as? PowerStore.CommitOutcome.Committed
+                        ?: throw AssertionError("Could not seed Memo metadata fixture")
+                    seeded += form to result.eventSeq
+                }
+            }
+            val seedCounts = counts(store)
+            val expectedCounts = if (seededInThisRun) baselineCounts.copy(
+                commits = baselineCounts.commits + 3,
+                identities = baselineCounts.identities + 3)
+            else baselineCounts
+            assertEquals(expectedCounts, seedCounts)
+            val fixtureSequences = seeded.map { it.second }.toSet()
+            val fixtureRecordsBeforeOpen = store.all().filter { it.eventSeq in fixtureSequences }
+            val sequenceLabels = seeded.map { (_, eventSeq) ->
+                "#" + eventSeq.toString().padStart(4, '0')
+            }
+            check(onboarding.edit().putBoolean("system-calendar-import-asked", true).commit())
+            if (frozenNative) {
+                assertEquals("Raw frozen APK must remain on its native recovery skin",
+                    "powercal-default", PowerCalSkinRegistry.active.key)
+                compose.runOnUiThread { compose.activity.recreate() }
+            } else {
+                context.getSharedPreferences("powercal-skin-choice", Context.MODE_PRIVATE)
+                    .edit().putString("selected", skinId).commit()
+                SkinPackageManager(context).restoreSelection()
+                assertEquals(skinId, PowerCalSkinRegistry.active.key)
+                assertTrue(PowerCalSkinRegistry.active.web?.fullCanvas == true)
+            }
+            if (!frozenNative) {
+                compose.runOnUiThread {
+                    compose.activity.setContent {
+                        CompositionLocalProvider(LocalContext provides context) {
+                            PowerCalTheme { PowerCalApp(store) }
+                        }
+                    }
+                }
+            }
+
+            if (frozenNative) {
+                compose.waitUntil(30_000) {
+                    compose.onAllNodes(hasContentDescription("Memo 未完成 4"))
+                        .fetchSemanticsNodes().isNotEmpty()
+                }
+                compose.onNode(hasContentDescription("Memo 未完成 4"))
+                    .performTouchInput { click() }
+                compose.waitUntil(15_000) {
+                    compose.onAllNodesWithText(datedTitle).fetchSemanticsNodes().isNotEmpty()
+                }
+                compose.onNodeWithText("备忘 · $datedDate").assertExists()
+                compose.onNodeWithText("备忘 · 无日期").assertExists()
+                compose.onNodeWithText("备忘 · $repeatingDate · 重复").assertExists()
+                fun screenRect(rect: Rect): JSONObject {
+                    val root = IntArray(2)
+                    compose.activity.findViewById<View>(android.R.id.content).getLocationOnScreen(root)
+                    return JSONObject().put("left", root[0] + rect.left)
+                        .put("top", root[1] + rect.top).put("right", root[0] + rect.right)
+                        .put("bottom", root[1] + rect.bottom)
+                }
+                fun screenRect(text: String): JSONObject = screenRect(
+                    compose.onNodeWithText(text, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+                )
+                val nativeGeometry = JSONObject()
+                    .put("row", screenRect(compose.onNode(hasText(datedTitle) and hasClickAction())
+                        .fetchSemanticsNode().boundsInRoot))
+                    .put("title", screenRect(datedTitle))
+                    .put("metadata", screenRect("备忘 · $datedDate"))
+                    .put("sequence", screenRect(sequenceLabels.first()))
+                val screenshot = saveScreenshot("native095-native-memo-metadata.png")
+                println("NATIVE095_MEMO_CAPTURE skin=$skinId zone=${zone.id} date=$datedDate " +
+                    "geometry=$nativeGeometry screenshot=${screenshot.absolutePath} store=$seedCounts")
+
+                compose.onNodeWithText(datedTitle, useUnmergedTree = true)
+                    .performTouchInput { click() }
+                compose.waitUntil(15_000) {
+                    compose.onAllNodesWithText("保存修改")
+                        .fetchSemanticsNodes().isNotEmpty()
+                }
+                val editorScreenshot = saveScreenshot("native095-native-memo-editor.png")
+                println("NATIVE095_MEMO_OPEN skin=$skinId eventSeq=${seeded.first().second} " +
+                    "screenshot=${editorScreenshot.absolutePath}")
+                assertEquals("Opening a Memo row is read-only", seedCounts, counts(store))
+                assertEquals("Opening a Memo row must preserve its Core records",
+                    fixtureRecordsBeforeOpen, store.all().filter { it.eventSeq in fixtureSequences })
+                compose.onNodeWithText("存档并退出").performClick()
+                compose.waitUntil(15_000) {
+                    compose.onAllNodesWithText("保存修改").fetchSemanticsNodes().isEmpty()
+                }
+                assertEquals("Closing an untouched Memo editor is read-only", seedCounts, counts(store))
+                assertEquals("Closing an untouched Memo editor must preserve Core records",
+                    fixtureRecordsBeforeOpen, store.all().filter { it.eventSeq in fixtureSequences })
+            } else {
+                compose.waitUntil(30_000) {
+                    compose.runOnUiThread {
+                        web = findWebView(compose.activity.findViewById(android.R.id.content))
+                    }
+                    web != null
+                }
+                val actualWeb = requireNotNull(web)
+                waitForJs(actualWeb, "!!window.PowerCalSkin&&!!document.querySelector('.clear-head [data-action=memo]')")
+                tapWeb(actualWeb, ".clear-head [data-action='memo']")
+                waitForJs(actualWeb, "!document.querySelector('#memoPage').hidden&&" +
+                    "document.querySelectorAll('#memoList .memo-row').length===4")
+                waitForJs(actualWeb, "Array.from(document.querySelectorAll('#memoList .memo-meta')).some(e=>e.textContent===${JSONObject.quote("备忘 · $datedDate")})")
+                waitForJs(actualWeb, "Array.from(document.querySelectorAll('#memoList .memo-meta')).some(e=>e.textContent===${JSONObject.quote("备忘 · 无日期")})")
+                waitForJs(actualWeb, "Array.from(document.querySelectorAll('#memoList .memo-meta')).some(e=>e.textContent===${JSONObject.quote("备忘 · $repeatingDate · 重复")})")
+                val firstSeq = seeded.first().second
+                waitForJs(actualWeb, "document.querySelector('#memoList .memo-row[data-event-seq=\"$firstSeq\"] .memo-sequence')?.textContent===${JSONObject.quote(sequenceLabels.first())}")
+                val webGeometry = evaluateObject(actualWeb, """(()=>{
+                  const row=document.querySelector('#memoList .memo-row[data-event-seq="$firstSeq"]');
+                  const rect=e=>{const r=e.getBoundingClientRect();return {left:r.left,top:r.top,right:r.right,bottom:r.bottom,width:r.width,height:r.height}};
+                  return {row:rect(row),title:rect(row.querySelector('.memo-title')),
+                    metadata:rect(row.querySelector('.memo-meta')),sequence:rect(row.querySelector('.memo-sequence')),
+                    metadataText:row.querySelector('.memo-meta').textContent,
+                    sequenceText:row.querySelector('.memo-sequence').textContent,
+                    viewport:{width:innerWidth,height:innerHeight}};
+                })()""")
+                val webViewBounds = webViewRect(actualWeb)
+                val webScaleX = (webViewBounds.getDouble("right") - webViewBounds.getDouble("left")) /
+                    webGeometry.getJSONObject("viewport").getDouble("width")
+                val webScaleY = (webViewBounds.getDouble("bottom") - webViewBounds.getDouble("top")) /
+                    webGeometry.getJSONObject("viewport").getDouble("height")
+                fun webScreenRect(key: String): JSONObject {
+                    val rect = webGeometry.getJSONObject(key)
+                    return JSONObject().put("left", webViewBounds.getDouble("left") + rect.getDouble("left") * webScaleX)
+                        .put("top", webViewBounds.getDouble("top") + rect.getDouble("top") * webScaleY)
+                        .put("right", webViewBounds.getDouble("left") + rect.getDouble("right") * webScaleX)
+                        .put("bottom", webViewBounds.getDouble("top") + rect.getDouble("bottom") * webScaleY)
+                }
+                val webScreenGeometry = JSONObject()
+                    .put("row", webScreenRect("row"))
+                    .put("title", webScreenRect("title"))
+                    .put("metadata", webScreenRect("metadata"))
+                    .put("sequence", webScreenRect("sequence"))
+                val nativeBounds = mapOf(
+                    "row" to listOf(42.0, 447.0, 1038.0, 615.0),
+                    "title" to listOf(210.0, 479.0, 800.0, 542.0),
+                    "metadata" to listOf(210.0, 542.0, 455.0, 584.0),
+                    "sequence" to listOf(929.0, 510.0, 1017.0, 552.0)
+                )
+                nativeBounds.forEach { (key, expected) ->
+                    val actual = webScreenGeometry.getJSONObject(key)
+                    val coordinates = listOf("left", "top", "right", "bottom")
+                    coordinates.forEachIndexed { index, edge ->
+                        assertEquals("Web $key.$edge must match the raw frozen Native screen geometry",
+                            expected[index], actual.getDouble(edge), 3.0)
+                    }
+                }
+                val screenshot = saveScreenshot("native095-web-v3-memo-metadata.png", actualWeb)
+                println("NATIVE095_MEMO_CAPTURE skin=$skinId zone=${zone.id} date=$datedDate " +
+                    "geometry=$webGeometry screenGeometry=$webScreenGeometry webView=$webViewBounds " +
+                    "screenshot=${screenshot.absolutePath} store=$seedCounts")
+
+                tapWeb(actualWeb, "#memoList .memo-meta")
+                waitForJs(actualWeb, "!document.querySelector('#skinSheet').hidden&&" +
+                    "document.querySelector('#sheetTitle').textContent.includes('编辑')")
+                val editorScreenshot = saveScreenshot("native095-web-v3-memo-editor.png", actualWeb)
+                println("NATIVE095_MEMO_OPEN skin=$skinId eventSeq=$firstSeq " +
+                    "screenshot=${editorScreenshot.absolutePath}")
+                assertEquals("Opening a Memo row is read-only", seedCounts, counts(store))
+                tapWeb(actualWeb, "#sheetClose")
+                waitForJs(actualWeb, "document.querySelector('#skinSheet').hidden")
+                assertEquals("Closing an untouched Memo editor must preserve Core records",
+                    fixtureRecordsBeforeOpen, store.all().filter { it.eventSeq in fixtureSequences })
+            }
+            assertEquals("Memo inspection must not write to its Store", seedCounts, counts(store))
+        } finally {
+            if (frozenNative) {
+                // The raw-reference AVD is a dedicated fixture. Keep the deterministic Memo rows
+                // there so the original APK remains runnable for later visual comparisons.
+                compose.runOnUiThread { compose.activity.recreate() }
+                compose.waitForIdle()
+                val restoreOnboarding = onboarding.edit()
+                if (hadOnboardingPromptFlag) {
+                    restoreOnboarding.putBoolean("system-calendar-import-asked", previousOnboardingPromptFlag)
+                } else {
+                    restoreOnboarding.remove("system-calendar-import-asked")
+                }
+                check(restoreOnboarding.commit())
+            } else {
+                compose.runOnUiThread { compose.activity.setContent { } }
+                compose.waitForIdle()
+                store.close()
+                context.deleteDatabase(databaseName)
+                listOf("powercal-onboarding", "powercal-skin-choice", "powercal-ui", "powercal-profile")
+                    .forEach { storage.getSharedPreferences("$namespace-$it", Context.MODE_PRIVATE)
+                        .edit().clear().commit() }
+                (context as IsolatedAppContext).deleteRoot()
+                PowerCalSkinRegistry.activate(originalSkin)
+            }
+        }
+    }
+
+    /** Clear only a pending DELETE draft left by an interrupted run of this dedicated AVD fixture. */
+    private fun discardOwnedMemoFixtureDrafts(
+        store: PowerStore,
+        fixtureSeqs: Set<Long>,
+        fixtureTitles: Set<String>
+    ) {
+        if (fixtureSeqs.isEmpty()) return
+        val pendingDraftsFor = store.javaClass.methods.single {
+            it.name == "pendingDraftsFor" && it.parameterTypes.size == 1
+        }
+        fixtureSeqs.forEach { eventSeq ->
+            val drafts = pendingDraftsFor.invoke(store, eventSeq) as List<*>
+            drafts.forEach { draft ->
+                val current: Any = draft ?: error("PowerStore returned a null fixture draft")
+                val operationValue: Any = current.javaClass.getMethod("getOperation").invoke(current)
+                    ?: error("Fixture draft operation is missing")
+                val operation = operationValue.toString()
+                val form: Any = current.javaClass.getMethod("getForm").invoke(current)
+                    ?: error("Fixture draft form is missing")
+                val title = form.javaClass.getMethod("getTitle").invoke(form) as String
+                assertTrue("Only this test's own Memo DELETE draft may be discarded",
+                    operation == "DELETE" && title in fixtureTitles)
+                val draftId = current.javaClass.getMethod("getDraftId").invoke(current) as Long
+                val discard = store.javaClass.methods.single {
+                    it.name == "discard" && it.parameterTypes.firstOrNull() == java.lang.Long.TYPE
+                }
+                val result = if (discard.parameterTypes.size == 1) discard.invoke(store, draftId)
+                    else discard.invoke(store, draftId, null)
+                assertEquals("The Core must discard the interrupted fixture draft", true, result)
+            }
+        }
+    }
+
     private fun runFixture(skinId: String, screenshotName: String) {
         val frozenNative = skinId == "powercal-default"
         val storage = compose.activity.applicationContext
@@ -130,13 +427,23 @@ class Native095RawAndWebDualWingInstrumentedTest {
                 for (lane in 0..3) add("WING_RIGHT_$lane")
             }
             val preexistingFixture = store.all()
-            val nativeFixtureSeededDuringThisTest = frozenNative && preexistingFixture.isEmpty()
+            val expectedMemoTitles = setOf(
+                "MEMO_VISUAL_DATED_TITLE", "MEMO_VISUAL_UNDATED_TITLE", "MEMO_VISUAL_REPEATING_TITLE"
+            )
+            val nativeTimelineFixture = preexistingFixture.filter { it.title in expectedTitles }
+            val nativeMemoFixture = preexistingFixture.filter { it.title in expectedMemoTitles }
+            val nativeFixtureSeededDuringThisTest = frozenNative && nativeTimelineFixture.isEmpty()
             if (frozenNative) {
-                assertTrue("Disposable raw AVD may contain only this test's exact fixture",
-                    preexistingFixture.isEmpty() || preexistingFixture.map { it.title }.toSet() == expectedTitles)
-                assertTrue("Raw AVD fixture must have exactly eight rows",
-                    preexistingFixture.isEmpty() || preexistingFixture.size == 8)
-                assertEquals(0, store.draftCount())
+                assertTrue("Raw AVD may contain only the Timeline and Memo fixtures owned by this class",
+                    preexistingFixture.all { it.title in expectedTitles || it.title in expectedMemoTitles })
+                assertTrue("Raw Timeline fixture must be empty or contain all eight rows",
+                    nativeTimelineFixture.isEmpty() || nativeTimelineFixture.map { it.title }.toSet() == expectedTitles)
+                assertTrue("Raw Memo fixture must be empty or contain all three rows",
+                    nativeMemoFixture.isEmpty() || nativeMemoFixture.map { it.title }.toSet() == expectedMemoTitles)
+                assertTrue("Native memo fixture rows must have Memo kind",
+                    nativeMemoFixture.all { it.kind == TemporalKind.MEMO })
+                assertEquals("Raw fixture rows must have no pending drafts", 0,
+                    preexistingFixture.sumOf { store.pendingDraftsFor(it.eventSeq).size })
                 assertTrue("Raw AVD must not have a prior skin selection",
                     storage.getSharedPreferences("powercal-skin-choice", Context.MODE_PRIVATE)
                         .getString("selected", null).let { it == null || it == "powercal-default" })
@@ -146,7 +453,7 @@ class Native095RawAndWebDualWingInstrumentedTest {
             val start = date.atTime(9, 0).atZone(zone).toInstant().toEpochMilli()
             val end = date.atTime(10, 0).atZone(zone).toInstant().toEpochMilli()
             val sequences = linkedMapOf<String, Long>()
-            if (preexistingFixture.isEmpty()) {
+            if (nativeTimelineFixture.isEmpty()) {
                 for (lane in 0..3) {
                     val title = "WING_LEFT_$lane"
                     val result = store.createFormalEvent(
@@ -179,7 +486,7 @@ class Native095RawAndWebDualWingInstrumentedTest {
                     sequences[title] = result.eventSeq
                 }
             } else {
-                preexistingFixture.forEach { record ->
+                nativeTimelineFixture.forEach { record ->
                     val expectedKind = if (record.title.startsWith("WING_LEFT_")) TemporalKind.ALARM
                         else TemporalKind.ACTIVITY
                     assertEquals(expectedKind, record.kind)
@@ -187,13 +494,14 @@ class Native095RawAndWebDualWingInstrumentedTest {
                 }
             }
 
-            val layout = TimelineLayout.layout(store.all())
+            val layout = TimelineLayout.layout(store.all().filter { it.title in expectedTitles })
             assertEquals((0..3).toSet(), layout.items.filter { it.side.name == "LEFT" }.map { it.lane }.toSet())
             assertEquals((0..3).toSet(), layout.items.filter { it.side.name == "RIGHT" }.map { it.lane }.toSet())
             val seedCounts = counts(store)
-            assertEquals(8, seedCounts.commits)
-            assertEquals(8, seedCounts.identities)
-            assertEquals(0, seedCounts.drafts)
+            assertTrue("Raw Timeline fixture must contain eight formal commits", seedCounts.commits >= 8)
+            assertEquals(8 + nativeMemoFixture.size, seedCounts.identities)
+            assertEquals("No Raw fixture event may have an actionable draft", 0,
+                preexistingFixture.sumOf { store.pendingDraftsFor(it.eventSeq).size })
 
             if (nativeFixtureSeededDuringThisTest) {
                 compose.runOnUiThread { compose.activity.recreate() }

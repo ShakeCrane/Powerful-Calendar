@@ -11,6 +11,7 @@ internal object WebSkinMemoProjection {
             put(JSONObject()
                 .put("eventSeq", entry.eventSeq)
                 .put("revision", entry.revision)
+                .put("kind", entry.kind.name)
                 .put("occurrenceKey", entry.occurrenceKey)
                 .put("originalOccurrenceKey", if (entry.repeating) {
                     entry.occurrenceKey
@@ -19,7 +20,9 @@ internal object WebSkinMemoProjection {
                 })
                 .put("title", entry.title.take(240))
                 .put("completed", entry.completed)
-                .put("startMillis", entry.startMillis))
+                .put("startMillis", entry.startMillis)
+                .put("zoneId", entry.zoneId)
+                .put("repeating", entry.repeating))
         }
     }
 }

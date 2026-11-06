@@ -294,11 +294,17 @@ class WebSkinHostProjectionTest {
             .single { it.getLong("eventSeq") == repeatedMemo.eventSeq &&
                 it.getString("occurrenceKey") == "2026-10-22T00:00" }
         assertEquals("2026-10-22T00:00", selected.getString("originalOccurrenceKey"))
+        assertEquals("MEMO", selected.getString("kind"))
+        assertEquals(zone.id, selected.getString("zoneId"))
+        assertTrue(selected.getBoolean("repeating"))
 
         val single = (0 until rows.length()).map(rows::getJSONObject)
             .single { it.getLong("eventSeq") == undatedMemo.eventSeq }
         assertEquals("single", single.getString("occurrenceKey"))
         assertTrue(single.isNull("originalOccurrenceKey"))
+        assertEquals("MEMO", single.getString("kind"))
+        assertEquals(zone.id, single.getString("zoneId"))
+        assertFalse(single.getBoolean("repeating"))
     }
 
     @Test fun memoPagingUsesStableBoundedPrefixesAndNeverShrinksTheLimit() {
