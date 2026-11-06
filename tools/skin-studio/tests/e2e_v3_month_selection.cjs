@@ -108,6 +108,29 @@ async function main(){
       }
       throw Error(label+" timed out");
     };
+    await frameEval(`(()=>{let metric=document.querySelector('meta[name="powercal-touch-slop-dp"]');
+      if(!metric){metric=document.createElement('meta');metric.name='powercal-touch-slop-dp';document.head.append(metric)}
+      metric.content='8'})()`);
+    let swipePointerId=90;
+    const swipeMonthRegion=async(selector,dx,dy=0,pointerType="touch")=>{
+      const pointerId=swipePointerId++;
+      const result=await frameEval(`(()=>{
+        const target=document.querySelector(${JSON.stringify(selector)});
+        if(!target)return {found:false};
+        target.scrollIntoView({block:'center'});
+        const rect=target.getBoundingClientRect(),x=rect.left+rect.width/2,y=rect.top+rect.height/2;
+        target.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,isPrimary:true,button:0,
+          pointerId:${pointerId},pointerType:${JSON.stringify(pointerType)},clientX:x,clientY:y}));
+        document.dispatchEvent(new PointerEvent('pointerup',{bubbles:true,isPrimary:true,button:0,
+          pointerId:${pointerId},pointerType:${JSON.stringify(pointerType)},clientX:x+(${dx}),clientY:y+(${dy})}));
+        target.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window,detail:1}));
+        return {found:true,scrollTop:document.querySelector('#monthPage').scrollTop,
+          visualScale:window.visualViewport?.scale||1,devicePixelRatio:window.devicePixelRatio};
+      })()`);
+      if(!result?.found)throw Error(`No Month swipe target: ${selector}`);
+      await delay(30);
+      return result;
+    };
     await frameEval("document.querySelector('.clear-tabbar [data-action=\\\"month\\\"]')?.click()");
     await waitFrame("!document.querySelector('#monthPage').hidden","Month navigation");
     const initial=await waitFrame(`(()=>{
@@ -259,14 +282,62 @@ async function main(){
       const grid=document.querySelector('#monthGrid'),rect=grid.getBoundingClientRect();
       const startX=rect.left+rect.width*.7,y=rect.top+rect.height*.5;
       grid.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,isPrimary:true,button:0,
-        pointerId:71,clientX:startX,clientY:y}));
+        pointerId:71,pointerType:'touch',clientX:startX,clientY:y}));
       document.dispatchEvent(new PointerEvent('pointerup',{bubbles:true,isPrimary:true,button:0,
-        pointerId:71,clientX:startX-110,clientY:y}));
+        pointerId:71,pointerType:'touch',clientX:startX-110,clientY:y}));
       // Real browsers dispatch a click after pointerup; the month handler consumes it after a swipe.
-      grid.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window}));
+      grid.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window,detail:1}));
     })()`);
     await waitFrame("document.querySelector('#monthTitle').dataset.month==='2027-06'",
       "Month swipe navigation");
+    const cameraBeforePageSwipes=await evaluate("simulatedState().timeline.anchorMillis");
+    const headerSwipe=await swipeMonthRegion(".month-page-head h1",-110);
+    await waitFrame("document.querySelector('#monthTitle').dataset.month==='2027-07'",
+      "Month swipe from page header");
+    const mouseDrag=await swipeMonthRegion(".month-page-head h1",-110,0,"mouse");
+    if(await frameEval("document.querySelector('#monthTitle').dataset.month")!=="2027-07")
+      throw Error("Mouse text drag must not trigger touch navigation");
+    await swipeMonthRegion("#monthAgenda h2",110);
+    await waitFrame("document.querySelector('#monthTitle').dataset.month==='2027-06'",
+      "Month swipe from agenda heading");
+    const footerSwipe=await swipeMonthRegion("#viewMonthDate",-110);
+    await waitFrame("document.querySelector('#monthTitle').dataset.month==='2027-07'",
+      "Month swipe from footer action");
+    if(await frameEval("!document.querySelector('#monthPage').hidden")!==true)
+      throw Error("A footer swipe also activated the month action instead of being consumed");
+    await swipeMonthRegion("#monthAgenda h2",110);
+    await waitFrame("document.querySelector('#monthTitle').dataset.month==='2027-06'",
+      "Restore month after footer swipe");
+    await frameEval("document.querySelector('#monthPage').scrollTop=0");
+    const shortTap=await swipeMonthRegion("#monthNumberTitle",-5);
+    const shortState=await frameEval(`({month:document.querySelector('#monthTitle').dataset.month,
+      dialogOpen:document.querySelector('#monthPickerDialog').open})`);
+    if(shortState.month!=="2027-06"||!shortState.dialogOpen)
+      throw Error("Movement within platform touch slop must preserve the picker tap: "+
+        JSON.stringify(shortState));
+    await frameEval("document.querySelector('#monthPickerCancel')?.click()");
+    const platformSlopDrag=await swipeMonthRegion("#monthNumberTitle",-20);
+    const platformSlopState=await frameEval(`({month:document.querySelector('#monthTitle').dataset.month,
+      dialogOpen:document.querySelector('#monthPickerDialog').open})`);
+    if(platformSlopState.month!=="2027-06"||platformSlopState.dialogOpen)
+      throw Error("A recognized horizontal drag below navigation threshold must cancel the tap only: "+
+        JSON.stringify(platformSlopState));
+    const exactThreshold=await swipeMonthRegion("#monthNumberTitle",-80);
+    const exactState=await frameEval(`({month:document.querySelector('#monthTitle').dataset.month,
+      dialogOpen:document.querySelector('#monthPickerDialog').open})`);
+    if(exactState.month!=="2027-06"||exactState.dialogOpen)
+      throw Error("Exactly touch slop + 72 CSS px must cancel the tap without changing month: "+
+        JSON.stringify(exactState));
+    const verticalSwipe=await swipeMonthRegion("#monthNumberTitle",8,110);
+    const verticalState=await frameEval(`({month:document.querySelector('#monthTitle').dataset.month,
+      dialogOpen:document.querySelector('#monthPickerDialog').open})`);
+    if(verticalState.month!=="2027-06"||!verticalState.dialogOpen)
+      throw Error("Vertical movement must not switch month and its button tap must survive: "+
+        JSON.stringify(verticalState));
+    await frameEval("document.querySelector('#monthPickerCancel')?.click()");
+    await frameEval("document.querySelector('#monthPage').scrollTop=0");
+    if(await evaluate("simulatedState().timeline.anchorMillis")!==cameraBeforePageSwipes)
+      throw Error("Month swipes changed the Timeline camera");
     await frameEval("document.querySelector('.month-cell[data-date=\\\"2027-06-19\\\"]')?.click()");
     const june=await waitFrame(`(()=>{
       const selected=document.querySelector('.month-cell.selected');
@@ -327,6 +398,8 @@ async function main(){
     fs.writeFileSync(path.join(reportDir,"month-selected-studio-preview.png"),
       Buffer.from(screenshot.data,"base64"));
     const result={package:loaded,initial,agendaCard,initialCamera,selected,picked,june,today,beforeTimeline,
+      pageSwipes:{headerSwipe,mouseDrag,footerSwipe,shortTap,platformSlopDrag,exactThreshold,
+        verticalSwipe,cameraBeforePageSwipes},
       juneCamera,
       createDate,created,finalPage:await frameEval(`({monthHidden:document.querySelector('#monthPage').hidden,
         timelineVisible:!document.querySelector('#timelinePage').hidden})`)};

@@ -9,11 +9,13 @@ import android.os.SystemClock
 import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -715,24 +717,42 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
         inject(MotionEvent.ACTION_UP, SystemClock.uptimeMillis(), endX)
     }
 
-    private fun swipeClearMonthGrid(web: WebView, forward: Boolean): JSONObject {
+    private fun swipeClearMonthGrid(web: WebView, forward: Boolean): JSONObject =
+        swipeClearMonthRegion(web, "#monthGrid", forward)
+
+    private fun swipeClearMonthRegion(
+        web: WebView,
+        selector: String,
+        forward: Boolean,
+        distanceDp: Double? = null
+    ): JSONObject {
         val rawProbe = evaluate(web, """(()=>{
-          const grid=document.querySelector('#monthGrid');
-          if(!grid)return JSON.stringify({found:false});
-          const rect=grid.getBoundingClientRect();
-          window.__monthSwipeProbe={down:false,up:false,cancelled:false,downTrusted:false,upTrusted:false,pointerId:null};
+          const target=document.querySelector(${JSONObject.quote(selector)});
+          if(!target)return JSON.stringify({found:false});
+          const rect=target.getBoundingClientRect(),page=document.querySelector('#monthPage');
+          window.__monthSwipeProbe={down:false,up:false,cancelled:false,downTrusted:false,upTrusted:false,
+            clickReachedDocument:false,pointerId:null,downPointerType:null,downButton:null,downPrimary:null,
+            upPointerType:null};
           document.addEventListener('pointerdown',event=>{
             const target=event.target instanceof Element?event.target:event.target?.parentElement;
-            if(target?.closest('#monthGrid')){
+            if(target?.closest('#monthPage')){
               window.__monthSwipeProbe.down=true;
               window.__monthSwipeProbe.downTrusted=event.isTrusted;
               window.__monthSwipeProbe.pointerId=event.pointerId;
+              window.__monthSwipeProbe.downPointerType=event.pointerType;
+              window.__monthSwipeProbe.downButton=event.button;
+              window.__monthSwipeProbe.downPrimary=event.isPrimary;
+              window.__monthSwipeProbe.startX=event.clientX;
+              window.__monthSwipeProbe.startY=event.clientY;
             }
           },true);
           document.addEventListener('pointerup',event=>{
             if(window.__monthSwipeProbe?.pointerId===event.pointerId){
               window.__monthSwipeProbe.up=true;
               window.__monthSwipeProbe.upTrusted=event.isTrusted;
+              window.__monthSwipeProbe.upPointerType=event.pointerType;
+              window.__monthSwipeProbe.eventDxCssPx=event.clientX-window.__monthSwipeProbe.startX;
+              window.__monthSwipeProbe.eventDyCssPx=event.clientY-window.__monthSwipeProbe.startY;
             }
           },true);
           document.addEventListener('pointercancel',event=>{
@@ -742,15 +762,24 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
               window.__monthSwipeProbe.cancelY=event.clientY;
             }
           },true);
+          document.addEventListener('click',event=>{
+            const clicked=event.target instanceof Element?event.target:event.target?.parentElement;
+            if(clicked?.closest('#monthPage')){
+              window.__monthSwipeProbe.clickReachedDocument=true;
+              window.__monthSwipeProbe.clickTarget=clicked.id||clicked.className||clicked.tagName;
+              window.__monthSwipeProbe.clickDetail=event.detail;
+            }
+          });
           return JSON.stringify({found:true,left:rect.left,right:rect.right,top:rect.top,
             height:rect.height,width:rect.width,cssWidth:innerWidth,cssHeight:innerHeight,
-            gridTouchAction:getComputedStyle(grid).touchAction,
-            cellTouchAction:getComputedStyle(grid.querySelector('button')).touchAction});
+            devicePixelRatio:devicePixelRatio,visualScale:visualViewport?.scale||1,
+            pageTouchAction:getComputedStyle(page).touchAction,
+            targetTouchAction:getComputedStyle(target).touchAction});
         })()""")
         val probe = JSONObject(JSONArray("[$rawProbe]").getString(0))
-        assertTrue("Clear month grid is missing or not laid out: $probe",
-            probe.optBoolean("found") && probe.getDouble("width") > 100 &&
-                probe.getDouble("height") > 100)
+        assertTrue("Clear Month gesture target is missing or not laid out: $probe",
+            probe.optBoolean("found") && probe.getDouble("width") > 20 &&
+                probe.getDouble("height") > 20)
 
         val location = IntArray(2)
         val webSize = AtomicReference<Pair<Int, Int>>()
@@ -763,20 +792,31 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
         val scaleY = height / probe.getDouble("cssHeight")
         assertEquals("WebView touch mapping must preserve aspect ratio", scaleX, scaleY, 0.03)
         val edgeGuard = 80.0
-        val startCssX = if (forward) {
-            minOf(probe.getDouble("right") - 12, probe.getDouble("cssWidth") - edgeGuard)
+        val startCssX = if (selector == "#monthGrid") {
+            if (forward) minOf(probe.getDouble("right") - 12, probe.getDouble("cssWidth") - edgeGuard)
+            else maxOf(probe.getDouble("left") + 12, edgeGuard)
+        } else if (forward) {
+            minOf(probe.getDouble("right") - 16, probe.getDouble("cssWidth") - edgeGuard)
         } else {
-            maxOf(probe.getDouble("left") + 12, edgeGuard)
+            maxOf(probe.getDouble("left") + 16, edgeGuard)
         }
-        val endCssX = if (forward) {
-            maxOf(probe.getDouble("left") + 12, edgeGuard)
-        } else {
-            minOf(probe.getDouble("right") - 12, probe.getDouble("cssWidth") - edgeGuard)
-        }
+        val endCssX = if (selector == "#monthGrid") {
+            if (forward) maxOf(probe.getDouble("left") + 12, edgeGuard)
+            else minOf(probe.getDouble("right") - 12, probe.getDouble("cssWidth") - edgeGuard)
+        } else startCssX + if (forward) -120.0 else 120.0
+        assertTrue("Gesture should stay in the WebView bounds: $selector $startCssX->$endCssX",
+            endCssX > edgeGuard && endCssX < probe.getDouble("cssWidth") - edgeGuard)
         val yCss = probe.getDouble("top") + probe.getDouble("height") / 2
+        val density = compose.activity.resources.displayMetrics.density
+        val startScreenX = location[0] + (startCssX * scaleX).toFloat()
+        val endScreenX = if (distanceDp != null) {
+            startScreenX + (if (forward) -1 else 1) * (distanceDp * density).toFloat()
+        } else {
+            location[0] + (endCssX * scaleX).toFloat()
+        }
         injectHorizontalSwipe(
-            location[0] + (startCssX * scaleX).toFloat(),
-            location[0] + (endCssX * scaleX).toFloat(),
+            startScreenX,
+            endScreenX,
             location[1] + (yCss * scaleY).toFloat()
         )
         val completed = runCatching {
@@ -785,14 +825,29 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
                     "(window.__monthSwipeProbe?.up===true||window.__monthSwipeProbe?.cancelled===true)") == "true"
             }
         }.isSuccess
+        SystemClock.sleep(80)
         val result = evaluate(web, "JSON.stringify(window.__monthSwipeProbe)")
         val details = JSONObject(JSONArray("[$result]").getString(0))
             .put("startCssX", startCssX).put("endCssX", endCssX).put("yCss", yCss)
-            .put("gridTouchAction", probe.getString("gridTouchAction"))
-            .put("cellTouchAction", probe.getString("cellTouchAction"))
+            .put("targetSelector", selector)
+            .put("screenPxPerCssPx", scaleX)
+            .put("densityDpi", compose.activity.resources.displayMetrics.densityDpi)
+            .put("distanceCssPx", kotlin.math.abs(endScreenX - startScreenX) / scaleX)
+            .put("distanceDp", kotlin.math.abs(endScreenX - startScreenX) / density)
+            .put("requestedDistanceDp", distanceDp ?: JSONObject.NULL)
+            .put("pageTouchAction", probe.getString("pageTouchAction"))
+            .put("targetTouchAction", probe.getString("targetTouchAction"))
+            .put("visualScale", probe.getDouble("visualScale"))
             .put("gestureCompleted", completed)
+        if (distanceDp != null) {
+            val observedCssPx = details.optDouble("eventDxCssPx", Double.NaN)
+            val observedDp = kotlin.math.abs(observedCssPx) * scaleX / density
+            details.put("observedDistanceDp", observedDp)
+            assertTrue("Injected touch distance should map to WebView CSS coordinates: $details",
+                observedDp.isFinite() && kotlin.math.abs(observedDp - distanceDp) < 0.75)
+        }
         println("CLEAR_MONTH_SWIPE_TOUCH $details")
-        assertTrue("Clear grid did not receive a complete trusted pointer swipe: $details",
+        assertTrue("Clear Month region did not receive a complete trusted pointer swipe: $details",
             completed && details.optBoolean("downTrusted") && details.optBoolean("upTrusted"))
         return details
     }
@@ -1985,6 +2040,18 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
         val nativeStore = PowerStore(nativeContext, database)
         val clearStore = PowerStore(clearContext, database)
         val zone = ZoneId.systemDefault()
+        val fixtureStart = LocalDate.now(zone).atTime(12, 0).atZone(zone)
+        val swipeFixture = DraftForm(kind = TemporalKind.ACTIVITY,
+            title = "MONTH_PAGE_SWIPE_FIXTURE",
+            startText = DraftForm.formatInstant(fixtureStart.toInstant().toEpochMilli(), zone),
+            endText = DraftForm.formatInstant(fixtureStart.plusHours(1).toInstant().toEpochMilli(), zone),
+            zoneId = zone.id, reminderMinutes = -1)
+        assertTrue("Native swipe fixture must be isolated and committed",
+            nativeStore.createFormalEvent(swipeFixture, "month-swipe-native-${UUID.randomUUID()}")
+                is PowerStore.CommitOutcome.Committed)
+        assertTrue("Clear swipe fixture must be isolated and committed",
+            clearStore.createFormalEvent(swipeFixture, "month-swipe-clear-${UUID.randomUUID()}")
+                is PowerStore.CommitOutcome.Committed)
         var web: WebView? = null
 
         fun counts(store: PowerStore) = listOf(
@@ -1998,6 +2065,40 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
             compose.waitUntil(15_000) {
                 compose.onAllNodesWithText("${month.year} 年").fetchSemanticsNodes().isNotEmpty() &&
                     compose.onAllNodesWithText("${month.monthValue} 月").fetchSemanticsNodes().isNotEmpty()
+            }
+        }
+
+        fun swipeNativeMonthFrom(targetText: String, forward: Boolean) {
+            val list = compose.onNode(hasScrollToIndexAction())
+            val listBounds = list.fetchSemanticsNode().boundsInRoot
+            val targetBounds = compose.onNodeWithText(targetText, substring = true,
+                useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            val y = (targetBounds.center.y - listBounds.top).coerceIn(8f, listBounds.height - 8f)
+            list.performTouchInput {
+                val startX = width * if (forward) 0.8f else 0.2f
+                val endX = width * if (forward) 0.2f else 0.8f
+                swipe(Offset(startX, y), Offset(endX, y), durationMillis = 500)
+            }
+        }
+
+        fun swipeNativeMonthByDp(targetText: String, distanceDp: Float, forward: Boolean) {
+            val list = compose.onNode(hasScrollToIndexAction())
+            val listBounds = list.fetchSemanticsNode().boundsInRoot
+            val targetBounds = compose.onNodeWithText(targetText, useUnmergedTree = true)
+                .fetchSemanticsNode().boundsInRoot
+            val startX = targetBounds.center.x - listBounds.left
+            val y = (targetBounds.center.y - listBounds.top).coerceIn(8f, listBounds.height - 8f)
+            val deltaPx = distanceDp * compose.activity.resources.displayMetrics.density
+            list.performTouchInput {
+                val endX = startX + if (forward) -deltaPx else deltaPx
+                swipe(Offset(startX, y), Offset(endX, y), durationMillis = 500)
+            }
+        }
+
+        fun swipeNativeMonthButtonByDp(targetText: String, distanceDp: Float) {
+            val distancePx = distanceDp * compose.activity.resources.displayMetrics.density
+            compose.onNodeWithText(targetText, useUnmergedTree = true).performTouchInput {
+                swipe(center, center + Offset(distancePx, 0f), durationMillis = 500)
             }
         }
 
@@ -2024,26 +2125,56 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
             val initialMonth = YearMonth.from(
                 java.time.Instant.ofEpochMilli(nativeAnchor).atZone(zone).toLocalDate()
             )
+            val touchSlopDp = ViewConfiguration.get(compose.activity).scaledTouchSlop /
+                compose.activity.resources.displayMetrics.density
+            println("MONTH_NATIVE_TOUCH_SLOP touchSlopDp=$touchSlopDp")
 
             compose.onNodeWithText("日历").performTouchInput { click() }
             awaitNativeMonth(initialMonth)
             val monthScrollNodes = compose.onAllNodes(hasScrollToIndexAction()).fetchSemanticsNodes()
             assertEquals("Native Month should expose one swipeable calendar list", 1, monthScrollNodes.size)
-            compose.onNode(hasScrollToIndexAction()).performTouchInput { swipeLeft() }
+            compose.onNodeWithText("MONTH_PAGE_SWIPE_FIXTURE", substring = true,
+                useUnmergedTree = true).assertExists()
+            swipeNativeMonthFrom("MONTH_PAGE_SWIPE_FIXTURE", forward = true)
             val nextMonth = initialMonth.plusMonths(1)
             awaitNativeMonth(nextMonth)
             compose.onNodeWithContentDescription("${nextMonth.atDay(1)}，0 项").assertIsSelected()
+            compose.onNodeWithText("保存修改").assertDoesNotExist()
             val nativeAfterNext = WebSkinBridgeRuntime.state()
             assertEquals(nativeAnchor, timeline(nativeAfterNext).getLong("anchorMillis"))
             assertEquals(nativeHours, timeline(nativeAfterNext).getDouble("hours"), 0.0)
             assertEquals(nativeCounts, counts(nativeStore))
 
-            compose.onNode(hasScrollToIndexAction()).performTouchInput { swipeRight() }
+            compose.onNode(hasScrollToIndexAction()).performScrollToNode(
+                hasText("在时间轴查看这一天"))
+            swipeNativeMonthFrom("在时间轴查看这一天", forward = false)
             awaitNativeMonth(initialMonth)
             compose.onNodeWithContentDescription("${initialMonth.atDay(1)}，0 项").assertIsSelected()
+            compose.onNodeWithText("保存修改").assertDoesNotExist()
             val nativeAfterPrevious = WebSkinBridgeRuntime.state()
             assertEquals(nativeAnchor, timeline(nativeAfterPrevious).getLong("anchorMillis"))
             assertEquals(nativeHours, timeline(nativeAfterPrevious).getDouble("hours"), 0.0)
+            assertEquals(nativeCounts, counts(nativeStore))
+
+            val monthButtonText = "${initialMonth.monthValue} 月"
+            compose.onNodeWithText(monthButtonText, useUnmergedTree = true).assertExists()
+            swipeNativeMonthButtonByDp(monthButtonText, distanceDp = 5f)
+            compose.onNodeWithText("选择月份 · ${initialMonth.year} 年").assertExists()
+            compose.onNodeWithText("关闭").performClick()
+            swipeNativeMonthButtonByDp(monthButtonText, distanceDp = touchSlopDp + 12f)
+            compose.onNodeWithText("选择月份 · ${initialMonth.year} 年").assertDoesNotExist()
+            awaitNativeMonth(initialMonth)
+
+            compose.onNodeWithText("四", useUnmergedTree = true).assertExists()
+            swipeNativeMonthByDp("四", distanceDp = touchSlopDp + 71f, forward = true)
+            awaitNativeMonth(initialMonth)
+            swipeNativeMonthByDp("四", distanceDp = touchSlopDp + 73f, forward = true)
+            awaitNativeMonth(nextMonth)
+            compose.onNodeWithContentDescription("${nextMonth.atDay(1)}，0 项").assertIsSelected()
+            compose.onNode(hasScrollToIndexAction()).performScrollToNode(
+                hasText("在时间轴查看这一天"))
+            swipeNativeMonthFrom("在时间轴查看这一天", forward = false)
+            awaitNativeMonth(initialMonth)
             assertEquals(nativeCounts, counts(nativeStore))
 
             compose.runOnUiThread {
@@ -2070,6 +2201,9 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
             }
             val clearWeb = requireNotNull(web)
             awaitJs(clearWeb, "!!window.PowerCalSkin&&!!document.querySelector('.clear-tabbar [data-action=month]')")
+            val touchSlopMetricExpr = "Math.abs(Number(document.querySelector('meta[name=\\\"powercal-touch-slop-dp\\\"]')?.content)-$touchSlopDp)<0.01"
+            awaitJs(clearWeb, touchSlopMetricExpr)
+            println("MONTH_WEB_TOUCH_SLOP injectedMatchesNative=${evaluate(clearWeb, touchSlopMetricExpr)}")
             val clearBefore = WebSkinBridgeRuntime.state()
             val clearCamera = timeline(clearBefore)
             val clearAnchor = clearCamera.getLong("anchorMillis")
@@ -2081,30 +2215,69 @@ class NativeClearMonthOccurrenceParityInstrumentedTest {
                 WebSkinBridgeRuntime.state().getJSONObject("month").getString("month")
             )
             assertEquals("Both skins begin at the same current month", initialMonth, clearInitialMonth)
+            tapClear(clearWeb, "#monthPage [data-action='today']")
+            awaitJs(clearWeb, "document.querySelector('#monthAgenda .agenda-event')?.textContent" +
+                ".includes('MONTH_PAGE_SWIPE_FIXTURE')===true")
 
-            val clearNextTouch = swipeClearMonthGrid(clearWeb, forward = true)
+            val clearNextTouch = swipeClearMonthRegion(clearWeb, ".agenda-event", forward = true)
             awaitJs(clearWeb, "document.querySelector('#monthTitle')?.dataset.month==='$nextMonth'")
             val nextMonthState = WebSkinBridgeRuntime.state().getJSONObject("month")
             assertEquals(nextMonth, YearMonth.parse(nextMonthState.getString("month")))
             assertEquals(nextMonth.atDay(1).toString(), nextMonthState.getString("selectedDate"))
             assertTrue("Clear swipe must arrive as trusted touchscreen down/up: $clearNextTouch",
                 clearNextTouch.optBoolean("downTrusted") && clearNextTouch.optBoolean("upTrusted"))
+            assertFalse("Swiping across an agenda event must consume its synthetic click: $clearNextTouch",
+                clearNextTouch.optBoolean("clickReachedDocument"))
+            awaitJs(clearWeb, "document.querySelector('#skinSheet').hidden")
             val clearAfterNext = WebSkinBridgeRuntime.state()
             assertEquals(clearAnchor, timeline(clearAfterNext).getLong("anchorMillis"))
             assertEquals(clearHours, timeline(clearAfterNext).getDouble("hours"), 0.0)
             assertEquals(clearCounts, counts(clearStore))
 
-            val clearPreviousTouch = swipeClearMonthGrid(clearWeb, forward = false)
+            evaluate(clearWeb, "document.querySelector('#viewMonthDate').scrollIntoView({block:'center'})")
+            val clearPreviousTouch = swipeClearMonthRegion(clearWeb, "#viewMonthDate", forward = false)
             awaitJs(clearWeb, "document.querySelector('#monthTitle')?.dataset.month==='$initialMonth'")
             val previousMonthState = WebSkinBridgeRuntime.state().getJSONObject("month")
             assertEquals(initialMonth, YearMonth.parse(previousMonthState.getString("month")))
             assertEquals(initialMonth.atDay(1).toString(), previousMonthState.getString("selectedDate"))
             assertTrue("Clear reverse swipe must also be trusted: $clearPreviousTouch",
                 clearPreviousTouch.optBoolean("downTrusted") && clearPreviousTouch.optBoolean("upTrusted"))
+            assertFalse("Footer swipe must not jump to Timeline: $clearPreviousTouch",
+                clearPreviousTouch.optBoolean("clickReachedDocument"))
+            awaitJs(clearWeb, "!document.querySelector('#monthPage').hidden")
             val clearAfterPrevious = WebSkinBridgeRuntime.state()
             assertEquals(clearAnchor, timeline(clearAfterPrevious).getLong("anchorMillis"))
             assertEquals(clearHours, timeline(clearAfterPrevious).getDouble("hours"), 0.0)
             assertEquals(clearCounts, counts(clearStore))
+
+            evaluate(clearWeb, "document.querySelector('#monthGrid .month-weekday:nth-child(4)')" +
+                ".scrollIntoView({block:'center'})")
+            val clearMonthButtonTap = swipeClearMonthRegion(clearWeb,
+                "#monthNumberTitle", forward = true, distanceDp = 5.0)
+            awaitJs(clearWeb, "document.querySelector('#monthPickerDialog')?.open===true")
+            tapClear(clearWeb, "#monthPickerCancel")
+            awaitJs(clearWeb, "document.querySelector('#monthPickerDialog')?.open!==true")
+            val clearBelowNavigationThreshold = swipeClearMonthRegion(clearWeb,
+                "#monthNumberTitle", forward = true, distanceDp = touchSlopDp + 12.0)
+            awaitJs(clearWeb, "document.querySelector('#monthTitle')?.dataset.month==='$initialMonth'")
+            awaitJs(clearWeb, "document.querySelector('#monthPickerDialog')?.open!==true")
+            val thresholdTouch = swipeClearMonthRegion(clearWeb,
+                "#monthGrid .month-weekday:nth-child(4)", forward = true,
+                distanceDp = touchSlopDp + 71.0)
+            awaitJs(clearWeb, "document.querySelector('#monthTitle')?.dataset.month==='$initialMonth'")
+            val overThresholdTouch = swipeClearMonthRegion(clearWeb,
+                "#monthGrid .month-weekday:nth-child(4)", forward = true,
+                distanceDp = touchSlopDp + 73.0)
+            awaitJs(clearWeb, "document.querySelector('#monthTitle')?.dataset.month==='$nextMonth'")
+            assertEquals(nextMonth.atDay(1).toString(),
+                WebSkinBridgeRuntime.state().getJSONObject("month").getString("selectedDate"))
+            assertEquals(clearCounts, counts(clearStore))
+            evaluate(clearWeb, "document.querySelector('#viewMonthDate').scrollIntoView({block:'center'})")
+            swipeClearMonthRegion(clearWeb, "#viewMonthDate", forward = false)
+            awaitJs(clearWeb, "document.querySelector('#monthTitle')?.dataset.month==='$initialMonth'")
+            println("CLEAR_MONTH_THRESHOLD_TOUCH nativeSlopDp=$touchSlopDp " +
+                "buttonTap5dp=$clearMonthButtonTap buttonDrag20dp=$clearBelowNavigationThreshold " +
+                "gridResidual71dp=$thresholdTouch gridResidual73dp=$overThresholdTouch")
             assertEquals(nativeCounts, counts(nativeStore))
             println("NATIVE_CLEAR_PARITY operation=MONTH_GRID_SWIPE " +
                 "month=$initialMonth next=$nextMonth back=$initialMonth " +

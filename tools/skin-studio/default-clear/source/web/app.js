@@ -477,8 +477,21 @@ axisResetHit?.addEventListener("keydown",event=>{
   }
 });
 let monthSwipeStart=null,monthSwipeConsumed=false,monthSwipeReset=0;
-$("monthGrid").addEventListener("pointerdown",event=>{
-  if(event.isPrimary&&event.button===0)
+const monthPage=$("monthPage");
+function monthSwipePlatformSlopCssPx(){
+  const viewportScale=Number(window.visualViewport?.scale);
+  const touchSlopDp=Number(document.querySelector('meta[name="powercal-touch-slop-dp"]')?.content);
+  const platformSlop=Number.isFinite(touchSlopDp)&&touchSlopDp>=0?touchSlopDp:0;
+  return platformSlop/(Number.isFinite(viewportScale)&&viewportScale>0?viewportScale:1);
+}
+function monthSwipeThresholdCssPx(){
+  const viewportScale=Number(window.visualViewport?.scale);
+  return 72/(Number.isFinite(viewportScale)&&viewportScale>0?viewportScale:1)+
+    monthSwipePlatformSlopCssPx();
+}
+monthPage.addEventListener("pointerdown",event=>{
+  if(event.isPrimary&&event.button===0&&
+      event.pointerType!=="mouse"&&(event.pointerType!==""||event.isTrusted))
     monthSwipeStart={x:event.clientX,y:event.clientY,pointerId:event.pointerId};
 });
 document.addEventListener("pointerup",event=>{
@@ -486,17 +499,20 @@ document.addEventListener("pointerup",event=>{
   if(!start||start.pointerId!==event.pointerId)return;
   monthSwipeStart=null;
   const dx=event.clientX-start.x,dy=event.clientY-start.y;
-  if(Math.abs(dx)<72||Math.abs(dx)<=Math.abs(dy))return;
+  const horizontalDistance=Math.abs(dx);
+  if(horizontalDistance<=monthSwipePlatformSlopCssPx()||horizontalDistance<=Math.abs(dy))return;
   monthSwipeConsumed=true;
   clearTimeout(monthSwipeReset);
   monthSwipeReset=setTimeout(()=>monthSwipeConsumed=false,500);
+  if(horizontalDistance<=monthSwipeThresholdCssPx())return;
   send("browseMonth",{deltaMonths:dx<0?1:-1});
 });
 document.addEventListener("pointercancel",event=>{
   if(monthSwipeStart?.pointerId===event.pointerId)monthSwipeStart=null;
 });
-$("monthGrid").addEventListener("click",event=>{
+monthPage.addEventListener("click",event=>{
   if(!monthSwipeConsumed)return;
+  if(event.detail===0){monthSwipeConsumed=false;clearTimeout(monthSwipeReset);return;}
   event.preventDefault();event.stopImmediatePropagation();
   monthSwipeConsumed=false;clearTimeout(monthSwipeReset);
 },true);

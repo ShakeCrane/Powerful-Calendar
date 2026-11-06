@@ -93,6 +93,7 @@ button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outl
 .page-head button{background:var(--fill-1);padding:9px 15px;border:0;border-radius:24px}
 #monthTitle{padding:6px 8px;color:var(--accent);font-weight:600}
 .month-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px 0;touch-action:pan-y}
+#monthPage{touch-action:pan-y}
 .month-cell{min-height:57px;text-align:center;border:0;border-top:1px solid var(--sep);
  background:transparent;font-variant-numeric:tabular-nums;touch-action:pan-y}
 .month-cell.today{color:var(--now);font-weight:700}

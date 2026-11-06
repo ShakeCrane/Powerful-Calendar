@@ -76,6 +76,16 @@ class WebSkinHostProjectionTest {
         assertEquals("0", webSkinResponseHeaders(0)["Content-Length"])
     }
 
+    @Test fun runtimeTouchSlopReplacesSkinAuthoredValueWithoutChangingOtherMarkup() {
+        val html = "<html><head><meta name='powercal-touch-slop-dp' content='999'>" +
+            "<title>Probe</title></head><body></body></html>"
+        val projected = injectWebSkinTouchSlop(html, 8f)
+        assertEquals(1, Regex("powercal-touch-slop-dp").findAll(projected).count())
+        assertTrue(projected.contains("content=\"8.0\""))
+        assertTrue(projected.indexOf("powercal-touch-slop-dp") < projected.indexOf("<title>"))
+        assertTrue(projected.contains("<body></body>"))
+    }
+
     @Test fun aiAttachmentPickerActionsArePayloadFreeAndClosedSchema() {
         fun decode(payload: String) = decodeBridgeAction(
             """{"version":1,"type":"action","payload":$payload}""")

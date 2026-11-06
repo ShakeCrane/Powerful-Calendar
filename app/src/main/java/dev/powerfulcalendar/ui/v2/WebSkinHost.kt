@@ -16,6 +16,7 @@ import android.graphics.Paint
 import android.os.Build
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewConfiguration
 import android.view.WindowInsets
 import android.widget.FrameLayout
 import android.webkit.ConsoleMessage
@@ -92,6 +93,22 @@ internal fun webSkinResponseHeaders(contentLength: Int): Map<String, String> = m
     "Cache-Control" to "no-store",
     "Content-Length" to contentLength.toString()
 )
+
+/** Adds the platform touch slop as a presentation metric without changing package contents. */
+internal fun injectWebSkinTouchSlop(html: String, touchSlopDp: Float): String {
+    require(touchSlopDp.isFinite() && touchSlopDp >= 0f)
+    val slopTag = "<meta name=\"powercal-touch-slop-dp\" content=\"$touchSlopDp\">"
+    val metricTag = Regex("(?is)<meta\\s+name\\s*=\\s*([\\\"'])powercal-touch-slop-dp\\1[^>]*>")
+    val withoutExistingMetric = html.replace(metricTag, "")
+    val head = Regex("(?i)<head\\b[^>]*>").find(withoutExistingMetric)
+    if (head != null) {
+        val insertAt = head.range.last + 1
+        return withoutExistingMetric.replaceRange(insertAt, insertAt, slopTag)
+    }
+    val body = Regex("(?i)<body\\b[^>]*>").find(withoutExistingMetric)
+    if (body != null) return withoutExistingMetric.replaceRange(body.range.first, body.range.first, slopTag)
+    return "$slopTag$withoutExistingMetric"
+}
 
 /** Presentation-only signal; it carries no Host action, data, or write authority. */
 internal fun decodeWebSkinModalVisibility(raw: String): Boolean? {
@@ -475,10 +492,16 @@ private fun SecureWebSkin(
                             ByteArrayInputStream(ByteArray(0)))
                     }
                     val path = uri.path.orEmpty().removePrefix("/").ifEmpty { bundle.entrypoint }
-                    val data = bundle.files[path] ?: return WebResourceResponse(
+                    val source = bundle.files[path] ?: return WebResourceResponse(
                         "text/plain", "utf-8", 404, "Missing", webSkinResponseHeaders(0),
                         ByteArrayInputStream(ByteArray(0)))
                     val mime = webSkinMimeType(path)
+                    val data = if (path == bundle.entrypoint && mime == "text/html") {
+                        val density = context.resources.displayMetrics.density
+                        val touchSlopDp = ViewConfiguration.get(context).scaledTouchSlop / density
+                        injectWebSkinTouchSlop(source.toString(Charsets.UTF_8), touchSlopDp)
+                            .toByteArray(Charsets.UTF_8)
+                    } else source
                     return WebResourceResponse(mime, if (mime.startsWith("text") || mime.contains("json") || mime.contains("javascript")) "utf-8" else null,
                         ByteArrayInputStream(data)).apply {
                         responseHeaders = webSkinResponseHeaders(data.size)
