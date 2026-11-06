@@ -7,24 +7,36 @@ OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: 4194d513826e6104d85c4aadee23cfb066e2a45b (frozen raw APK and Web v3 dual-wing initial view; narrow parity slice)
-LATEST_VERIFIED_HEAD: 4194d513826e6104d85c4aadee23cfb066e2a45b (serial boundaries, 977/977 JVM, assembleDebug, lintDebug, AndroidTest compile/package, raw Native/Web dual-wing instrumentation 2/2 PASS)
+LATEST_CODE_HEAD: 75a3510c5affa18c08dbb0d23482496d0240453d (frozen raw APK and Web v3 ALARM point-title style; narrow parity slice)
+LATEST_VERIFIED_HEAD: 75a3510c5affa18c08dbb0d23482496d0240453d (serial boundaries, 977/977 JVM, assembleDebug, lintDebug, AndroidTest compile/package, raw Native/Web title and dual-wing instrumentation 2/2 PASS)
 CURRENT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
 TASK_STATUS: IN_PROGRESS
 PRODUCT_CUTOVER: HOLD
 TASK_BASE_HEAD: e41246d7ebe5b329adbdc657bd3e53735695efa1
-WORKING_APK_SHA256: 070FCF76FCEA8A4CCEC86A5F6B516A7FE2FE2ACDD5DFC89861C7E920211FE192
-WORKING_DEFAULT_SKIN_SHA256: 8a679cb53be26fb1b4fb53f4e0361ac02b802a80e773e74b19b45b3ec6374dca
+WORKING_APK_SHA256: AA7D061C7EE412BBF368E33B237869539E076992FEE7A8D3A7E79E3CAB79CD5D
+WORKING_DEFAULT_SKIN_SHA256: 95526F9DF0C1524790E48EFF3ECDCA6F6848C078BBD34825D2FC2463D0E9D58E
 WORKING_DEFAULT_SKIN_ID: powercal-clear-default
 NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; implementation and full parity remain IN PROGRESS)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
-LAST_COMPLETED_TASK: Native 0.9.5 frozen raw APK / Web v3 dual-wing initial view (narrow PASS; full Timeline and overall parity remain PARTIAL)
-LAST_COMPLETED_COMMIT: 4194d513826e6104d85c4aadee23cfb066e2a45b
+LAST_COMPLETED_TASK: Native 0.9.5 frozen raw APK / Web v3 dual-wing initial view and ALARM point-title style (narrow PASS; full Timeline and overall parity remain PARTIAL)
+LAST_COMPLETED_COMMIT: 75a3510c5affa18c08dbb0d23482496d0240453d
 LAST_ATTEMPTED_TASK: Native 0.9.5 visual and interaction parity migration (IN PROGRESS; see audit and latest Android evidence)
-LAST_ATTEMPTED_COMMIT: 4194d513826e6104d85c4aadee23cfb066e2a45b (raw APK dual-wing initial-view implementation; parity task remains IN_PROGRESS)
+LAST_ATTEMPTED_COMMIT: 75a3510c5affa18c08dbb0d23482496d0240453d (raw APK/Web ALARM point-title alignment; parity task remains IN_PROGRESS)
 NEXT_TASK: NATIVE_095_VISUAL_PARITY_IMPLEMENTATION
-NEXT_ACTION: Continue finite Native 0.9.5 event-point typography/color and editor-component comparisons using same-configuration, same-fixture raw APK/Web evidence. Do not mark the whole Timeline or a full page PASS until remaining states are compared; Product Cutover remains HOLD.
+NEXT_ACTION: Continue the finite Native 0.9.5 page/component difference audit using same-configuration, same-fixture original-APK and Web v3 evidence. ALARM point-title typography/color is closed narrowly; compare the remaining point kinds, activity cards and per-page component gaps. Keep page-wide status PARTIAL until every required state has evidence; Product Cutover remains HOLD.
 LAST_TASK_EVIDENCE:
+  NATIVE_095_ALARM_POINT_TITLE:
+    status: PASS (ALARM title typography, type color and title-box geometry only; Timeline remains PARTIAL)
+    source_baseline: b1f7629f0c52812e1887443872f43aa6c49908c4
+    reference_apk_sha256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
+    code_commit: 75a3510c5affa18c08dbb0d23482496d0240453d
+    current_apk_sha256: AA7D061C7EE412BBF368E33B237869539E076992FEE7A8D3A7E79E3CAB79CD5D
+    current_skin_sha256: 95526F9DF0C1524790E48EFF3ECDCA6F6848C078BBD34825D2FC2463D0E9D58E (10 files, 410943 bytes, one package, source/APK identical)
+    tests: serial full Gradle gate PASS; 977/977 JVM, 0 failures/errors/skips; source boundaries, assemble, lint, AndroidTest compile/package PASS; raw Native and Web v3 instrumentation each 1/1 PASS; distribution 2/2 and Node syntax PASS
+    android: raw frozen APK AVD PowerCal_Native095_RawFixture_20261106 / emulator-5590; Web v3 AVD PowerCal_Wave2_QA35_20261104 / emulator-5556; both API 35, 1080x2400, 420dpi, GMT; same eight-event fixture; Store counts 0 drafts / 8 commits / 8 identities
+    geometry: Native title box [40,1047]-[226,1110]; Web converted [39.32,1046.89]-[226.64,1109.85], max edge/size delta 1.32px; ink bbox Native (42,1066)-(220,1089), Web (42,1065)-(222,1088)
+    evidence: .local/android-test/reports/native095-alarm-point-title-20261106/manifest.md; issue docs/issues/PC-ISSUE-SEPARATION-NATIVE-TIMELINE-POINT-TITLE-20261106.md; audit docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md
+    limitations: only ALARM title directly tested; DEADLINE style/position, ACTIVITY cards, dark/large font, recurrence, full Timeline and all other pages remain open; Native recovery intact; Product Cutover HOLD
   NATIVE_095_TIMELINE_WING_BOUNDS_AND_SCROLL:
     status: PASS (dual-wing physical bounds, independent scroll extents and touch movement; Timeline remains PARTIAL)
     source_baseline: b1f7629f0c52812e1887443872f43aa6c49908c4

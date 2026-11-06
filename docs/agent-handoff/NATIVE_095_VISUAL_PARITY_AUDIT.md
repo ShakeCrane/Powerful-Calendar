@@ -559,3 +559,13 @@ Native 和 Web 专项仪器测试各 1/1 PASS。gradle-full-gate.log 为 BUILD S
 Raw/Web fixture Store 均为 drafts=0, commits=8, identities=8，无夹具外写入。Native 实际点开并关闭事件编辑器前后只读计数不变。截图：Native SHA-256 CF30CCD7CC76650802D6DF0778AE7D5ACDE067E94171D9E111510DDAE7BB042A；Web SHA-256 499BEAE9C8A05F59426449BB2A718B8538C2CBFDD22E7C90C57A5FFAFFD639D8。事件编辑截图 SHA-256 DCA309413275860CE8F1F74116292E2955233320FE93D8E36A1F6BADD7A6367B，UI hierarchy SHA-256 BC57BBAEA170F8B7DF506AAED2280C660FDC515338E80DF940AED800C82D92AC。Gradle 和仪器日志、运行时 JSON、截图均在 .local/android-test/reports/native095-raw-dualwing-20261106/manifest.md 所列目录。
 
 验收边界：这关闭的是原始 APK 同夹具双翼初始事件位置与独立横向滚动证据缺口，不代表整个 Timeline 或其它页面完成视觉/交互等价。标题折叠、全部事件种类与状态、recurrence、深色/大字体及其他 Native 页面继续维持各自状态；Product Cutover 仍 HOLD。实现提交 4194d513826e6104d85c4aadee23cfb066e2a45b。
+
+
+## Native 0.9.5 ALARM 时间点标题样式与几何（2026-11-06）
+
+- 窄切片 PASS；Timeline 仍 PARTIAL。原始冻结 APK 的 ALARM 标题实测为 13sp、24sp 行高、0.5sp 字距、事件主色；Web 原规则字号/行高较小、颜色较深，且标题锚点偏移不同。Web v3 已对齐这些值，默认包由正式 builder 重建。
+- 冻结原始 APK 与 Web v3 在两个隔离 API 35 AVD 上使用相同八事件夹具。Native 标题框 `[40,1047]-[226,1110]`；Web CSS 框换算屏幕 `[39.32,1046.89]-[226.64,1109.85]`，四边尺寸偏差不超过 1.32px。蓝色墨迹 bbox Native `(42,1066)-(220,1089)`、Web `(42,1065)-(222,1088)`。
+- Native/Web 实际事件编辑触控测试各 1/1 PASS；Store 均为 `drafts=0, commits=8, identities=8`。完整串行 Gradle 门禁 977/977 JVM，0 failures/errors/skips；源码边界、APK、Lint、AndroidTest compile/package、分发测试 2/2、Node 语法及正式包校验 PASS。
+- 代码提交 `75a3510c5affa18c08dbb0d23482496d0240453d`。Debug APK SHA-256 `AA7D061C7EE412BBF368E33B237869539E076992FEE7A8D3A7E79E3CAB79CD5D`；唯一默认包 SHA-256 `95526F9DF0C1524790E48EFF3ECDCA6F6848C078BBD34825D2FC2463D0E9D58E`，10 files / 410943 bytes，源码和 APK 字节一致。
+- 证据目录 `.local/android-test/reports/native095-alarm-point-title-20261106/`；独立 Issue `docs/issues/PC-ISSUE-SEPARATION-NATIVE-TIMELINE-POINT-TITLE-20261106.md`。
+- 仅 ALARM 标题直接实测；DEADLINE 调整尚未单独设备验证。ACTIVITY 卡片、其他状态、深色/大字体、复发事件及完整 Timeline 仍未签核。Native 恢复不变，Product Cutover HOLD。

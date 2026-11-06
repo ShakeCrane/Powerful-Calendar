@@ -2787,3 +2787,10 @@ API 35 emulator-5570 真实触控 Native Compose 与打包 Clear WebView 的无 
 - 完整串行 Gradle 门禁 PASS，977/977 JVM、0 failures/errors/skips；源码边界、assemble、lint、AndroidTest compile/package PASS。Node 语法及默认分发 Python 2/2 PASS；正式包校验确认唯一 powercal-clear-default.pcskin 与 APK 资源字节相同。
 - 当前 APK SHA-256 070FCF76FCEA8A4CCEC86A5F6B516A7FE2FE2ACDD5DFC89861C7E920211FE192；默认包 SHA-256 8a679cb53be26fb1b4fb53f4e0361ac02b802a80e773e74b19b45b3ec6374dca；实现提交 4194d513826e6104d85c4aadee23cfb066e2a45b。
 - 证据目录 .local/android-test/reports/native095-raw-dualwing-20261106/；截图和命令日志索引位于其 manifest.md。没有改动 Core/Host 业务逻辑、Native 恢复、用户数据或默认 Skin ID。整体 Native-to-Web parity 继续 IN_PROGRESS，Product Cutover HOLD。
+
+## Native 0.9.5 ALARM 时间点标题样式（2026-11-06）
+
+- **窄切片 PASS；Timeline 总体和跨页面视觉迁移继续 IN_PROGRESS。** Web v3 标题的字色、13/24 字体行高、0.5 字距和锚点位置已按冻结 Native 对照；同配置原始 APK/Web 实屏标题框最大边界尺寸差约 1.32px，墨迹 bbox 差 2px 宽、1px 高。
+- 最终完整串行 Gradle 门禁 977/977 JVM，0 failures/errors/skips；源边界、assemble、lint、AndroidTest compile/package PASS。Native 与 Web 隔离 API 35 instrumented tests 各 1/1 PASS，Default distribution 2/2、Node syntax 和 package verifier PASS。
+- Native/Web Store 均为 drafts=0、commits=8、identities=8。唯一 `.pcskin` 10 files / 410943 bytes，SHA-256 `95526F9DF0C1524790E48EFF3ECDCA6F6848C078BBD34825D2FC2463D0E9D58E`；APK SHA-256 `AA7D061C7EE412BBF368E33B237869539E076992FEE7A8D3A7E79E3CAB79CD5D`。实现提交 `75a3510c5affa18c08dbb0d23482496d0240453d`。
+- 证据 `.local/android-test/reports/native095-alarm-point-title-20261106/`；独立 Issue `docs/issues/PC-ISSUE-SEPARATION-NATIVE-TIMELINE-POINT-TITLE-20261106.md`。DEADLINE 虽已采用对应色值与位置换算，本轮未做设备对照；深色/大字体/recurrence 和其它页面同样未签核。Native recovery 维持，Product Cutover HOLD。
