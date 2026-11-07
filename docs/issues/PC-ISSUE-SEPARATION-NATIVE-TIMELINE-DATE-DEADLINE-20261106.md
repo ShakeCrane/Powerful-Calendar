@@ -42,3 +42,13 @@ Android 触控轨迹还复现了独立的拖动取消原因：日期芯片的 `t
 一次早期 Gradle `connectedDebugAndroidTest` 自动命中了所有已连接设备，并卸载了原生参考 AVD 中的应用。随后已在同一隔离 AVD 重装哈希确认的原始 APK，并恢复了合成测试夹具；没有触及真机或真实用户数据。此后所有设备测试都通过 `adb -s emulator-5554` 显式指定目标 AVD。后续对照不得再调用会自动枚举设备的 connected Gradle 任务。
 
 本窄切片不签核双翼水平滚动、框外标题与贪心折叠、所有视口/字体状态、提醒与其它 Timeline 控件或整个 Timeline 页面。它们继续按 `docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md` 分项处理。
+
+## 2026-11-07 Native 0.9.5 日期型 Deadline 冻结 APK / Web v3 A/B（窄范围 PASS）
+
+- **范围与基线：**只验收日期型 Deadline 日期带、23:59 视觉锚点、只读打开/关闭和拖动形成日期型草稿。冻结源码 `b1f7629f0c52812e1887443872f43aa6c49908c4`；原始 APK `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`。测试代码提交 `aabd97bed91711b498b33658b651f012584cba92`，不含产品代码或默认皮肤修改。
+- **设备与 fixture：**冻结 APK 在 `PowerCal_Native095_MenuReference_20261107` / `emulator-5560`；Web v3 在 `PowerCal_Wave2_QA35_20261104` / `emulator-5556`。均为 API 35、1080×2400、420 dpi、GMT；WebView 124.0.6367.219。两侧使用相同日期及同名拥挤双翼 fixture。冻结 APK 的既有 QA Store 数据未清除。
+- **实测：**冻结 APK 与 Web v3 的目标 Android 方法分别 1/1 PASS。两端实际滑动揭示左翼 Deadline lane、点击日期芯片和 23:59 点打开同一 Deadline、无修改退出，并长按拖动为次日生成 `deadlineMillis=null` 的日期型草稿。正式事件日期、revision、commit 和 identity 保持不变；没有正式写入。冻结 APK 测试草稿已显式丢弃，保留为非活动 QA 草稿记录；Web fixture 仅清理自身 UUID 命名空间。
+- **几何：**Core 锚点 `1794095999999`；Native 视口底边/点位 y=1991 px，日期条根 bounds `[42,268]-[804,405]`。Web surface 高 602.2857 CSS px，点 y=601.75；日期条 x=16 CSS px（DPR 2.625 下为 42 physical px）。设备时钟相差约 3 分钟，蓝色当前时间线不作为像素对照条件。
+- **门禁：**完整串行 Gradle gate PASS；之后强制重跑 JVM 为 988/988、0 failures/errors/skips；正式默认包 verifier PASS（唯一 `powercal-clear-default.pcskin`，10 files / 420396 bytes，源与 APK SHA-256 `dd49636784dfab7ee356a114d3d4db0963087f37a4e1f0bc3ce505b766f9d14e`）。Debug APK SHA-256 `3E95E2992AD89EAE7BC8C0B59084F39504A27432A3533532BB78B1D6AD58EA56`。
+- **证据：**`.local/android-test/reports/native095-date-deadline-20261107/manifest.md`；冻结 APK 与 Web 截图 SHA-256 分别为 `029AE2D3B93C987F1D8072532CFD173B95A6DF396076DEFA964C7A86736DB23B` 与 `014302D1A12D1DA5CAE380DFDFC1AB107E450D595F36D058375AD2EA8FE7BFEA`。Issue：`docs/issues/PC-ISSUE-SEPARATION-NATIVE-TIMELINE-DATE-DEADLINE-20261106.md`。
+- **结论与缺口：**日期型 Deadline 时间轴窄切片 PASS；Timeline 整页、其他事件类型/视口/字体状态及全页面 Native/Web parity 仍 PARTIAL，Product Cutover 仍 HOLD。唯一下一项为 Draft Deck 空状态与 AI 锁定只读状态的冻结 Native/Web 对照。

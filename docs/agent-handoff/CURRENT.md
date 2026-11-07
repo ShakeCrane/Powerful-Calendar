@@ -8,8 +8,8 @@ OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: e9ec15e113025cb1f819e5d37b3eba7cd49c9e4d (Native 0.9.5 dual-wing initial-edge instrumentation and Browser E2E; product UI source unchanged)
-LATEST_VERIFIED_HEAD: e9ec15e113025cb1f819e5d37b3eba7cd49c9e4d (serial Gradle PASS; 988/988 JVM; source boundaries, assemble, lint and AndroidTest compile PASS; frozen Native and current Web API 35 dual-wing tests 1/1 each; official package verification and full Browser E2E PASS)
+LATEST_CODE_HEAD: aabd97bed91711b498b33658b651f012584cba92 (frozen Native/Web date-only Deadline Android test coverage; no product UI source change)
+LATEST_VERIFIED_HEAD: aabd97bed91711b498b33658b651f012584cba92 (serial Gradle gate PASS; forced JVM rerun 988/988; raw frozen APK and current Web v3 target instrumentation 1/1 each; official single-package verification PASS)
 CURRENT_TASK: NATIVE_095_VISUAL_PARITY
 TASK_STATUS: IN_PROGRESS
 PRODUCT_CUTOVER: HOLD
@@ -17,14 +17,14 @@ TASK_BASE_HEAD: 05514a12c3cf6c0b62bfe2daad04fbbdf433097f
 WORKING_APK_SHA256: 3E95E2992AD89EAE7BC8C0B59084F39504A27432A3533532BB78B1D6AD58EA56
 WORKING_DEFAULT_SKIN_SHA256: dd49636784dfab7ee356a114d3d4db0963087f37a4e1f0bc3ce505b766f9d14e
 WORKING_DEFAULT_SKIN_ID: powercal-clear-default
-NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; pinch and dual-wing initial-edge slices narrow PASS; full page parity remains IN PROGRESS)
+NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (date-only Deadline narrow PASS; Timeline and full page parity remain IN PROGRESS)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
-LAST_COMPLETED_TASK: Native 0.9.5 dual-wing initial-edge parity verification (narrow PASS; full Timeline and Draft Deck remain PARTIAL)
-LAST_COMPLETED_COMMIT: e9ec15e113025cb1f819e5d37b3eba7cd49c9e4d
+LAST_COMPLETED_TASK: NATIVE_095_TIMELINE_DATE_DEADLINE_PARITY (narrow PASS; Timeline overall remains PARTIAL)
+LAST_COMPLETED_COMMIT: aabd97bed91711b498b33658b651f012584cba92
 LAST_ATTEMPTED_TASK: PowerCal Functional Preview artifact and main-flow smoke (DELIVERED for isolated QA; AI chat send NOT TESTED after two identical trusted-touch automation failures)
 LAST_ATTEMPTED_COMMIT: 05514a12c3cf6c0b62bfe2daad04fbbdf433097f (APK build baseline)
-NEXT_TASK: NATIVE_095_TIMELINE_DATE_DEADLINE_PARITY
-NEXT_ACTION: Compare the date-only Deadline date-band chip and its 23:59 timeline anchor on the frozen Native APK and current Web v3 with the same API 35 fixture. Android A/B is NOT TESTED in the just-completed dual-wing slice; Studio Mock evidence is not device evidence. Then continue the PARTIAL Draft Deck empty/transient, AI-locked, restore/conflict, delete-confirmation, completion/undo and IME/accessibility states.
+NEXT_TASK: NATIVE_095_DRAFT_DECK_EMPTY_AI_LOCKED_PARITY
+NEXT_ACTION: Compare frozen Native and Web v3 empty/no-draft and AI-locked read-only Draft Deck states with a deterministic matched fixture; verify disabled/rejected actions and unchanged Store state. Keep full Draft Deck and overall parity PARTIAL.
 FUNCTIONAL_PREVIEW_DELIVERY:
   status: DELIVERED (isolated QA Functional Preview; not a public release and not full Native 0.9.5 parity)
   apk: dist/powercal/PowerCal-Functional-Preview-2026-11-07-05514a12.apk
@@ -38,6 +38,21 @@ FUNCTIONAL_PREVIEW_DELIVERY:
   limitation: AI page entry only; chat-send instrumentation failed twice before Host request at trusted #chatSend pointerdown; no live provider used. Import/export, permission change, OEM reminder delivery, TalkBack and physical-device tests not rerun.
   evidence: dist/powercal/PowerCal-Functional-Preview-2026-11-07.md; .local/android-test/reports/functional-preview-20261107/manifest.md
 LATEST_SLICE_EVIDENCE:
+  NATIVE_095_TIMELINE_DATE_DEADLINE_ANDROID_AB:
+    status: NARROW PASS (date-only chip, 23:59 point, read-only open/close and date-precision drag; Timeline remains PARTIAL)
+    code_commit: aabd97bed91711b498b33658b651f012584cba92
+    source_baseline: b1f7629f0c52812e1887443872f43aa6c49908c4
+    original_apk_sha256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
+    current_apk_sha256: 3E95E2992AD89EAE7BC8C0B59084F39504A27432A3533532BB78B1D6AD58EA56
+    default_skin_sha256: dd49636784dfab7ee356a114d3d4db0963087f37a4e1f0bc3ce505b766f9d14e (10 files / 420396 bytes; one package; source/APK identical)
+    android: frozen APK PowerCal_Native095_MenuReference_20261107 / emulator-5560; Web QA PowerCal_Wave2_QA35_20261104 / emulator-5556; API 35, GMT, 1080x2400, 420 dpi; WebView 124.0.6367.219
+    fixture: date 2026-11-07; four left ALARMs, four right ACTIVITY records, same date-only Deadline and 09:15 ACTIVITY; existing raw QA Store retained
+    behavior: both target Android methods 1/1 PASS; chip and 23:59 point open read-only; drag creates next-day date-only draft; formal record/revision/commit/identity unchanged; raw test draft discarded
+    geometry: Core visual anchor 1794095999999; Native viewport bottom/point y=1991px; Web 602.2857 CSS px surface and point y=601.75; Web chip x=16 CSS px
+    tests: full serial Gradle gate PASS; forced JVM rerun 988/988, 0 failures/errors/skips; boundaries, assemble, lint, AndroidTest compilation and package verification PASS
+    screenshots: Native 029AE2D3B93C987F1D8072532CFD173B95A6DF396076DEFA964C7A86736DB23B; Web 014302D1A12D1DA5CAE380DFDFC1AB107E450D595F36D058375AD2EA8FE7BFEA
+    evidence: .local/android-test/reports/native095-date-deadline-20261107/manifest.md; issue docs/issues/PC-ISSUE-SEPARATION-NATIVE-TIMELINE-DATE-DEADLINE-20261106.md
+    residuals: blue current-time line differs by ~3 minutes due to device clocks; Timeline/page-wide parity remains PARTIAL; Product Cutover HOLD
   NATIVE_095_TIMELINE_INITIAL_LEFT:
     status: NARROW PASS (frozen runtime and Web both start at outer lane edge; product UI source unchanged; Timeline remains PARTIAL)
     code_commit: e9ec15e113025cb1f819e5d37b3eba7cd49c9e4d

@@ -856,3 +856,13 @@ The AI page remains `PARTIAL`: menu visual layout, attachments, proposal/error/r
 - 真实图像：冻结 APK `.local/android-test/reports/native095-timeline-initial-left-20261107/native095-original-apk-dual-wing-final.png` SHA-256 `6D99B750900D4207618A16B9C9DEE2BEF4FC11386BE5AD421B1FF5C63A0AAF33`；Web v3 `web-v3-dual-wing.png` SHA-256 `B38F9E797A0AF6C279411819ED8658327E7C921B24F813179F51C6270F947525`。详细命令、早期错误断言及后续成功复测见同目录 `manifest.md`。
 
 结论只为“左翼首次外边缘/scroll 初值与双翼独立交互”通过窄切片复核；此前关于 integrated Browser E2E 初始左翼断言失败的当前阻塞已关闭。该 Browser Mock 的日期型 Deadline 双表现断言不是 Android A/B：冻结原始 APK 和 Web v3 上的日期带芯片及 23:59 时间轴锚点仍须使用同夹具设备验证，状态 `NOT TESTED`。Timeline 整页、其他 Native 页面及 Product Cutover 仍 `PARTIAL` / `HOLD`。
+
+## 2026-11-07 Native 0.9.5 日期型 Deadline 冻结 APK / Web v3 A/B（窄范围 PASS）
+
+- **范围与基线：**只验收日期型 Deadline 日期带、23:59 视觉锚点、只读打开/关闭和拖动形成日期型草稿。冻结源码 `b1f7629f0c52812e1887443872f43aa6c49908c4`；原始 APK `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`。测试代码提交 `aabd97bed91711b498b33658b651f012584cba92`，不含产品代码或默认皮肤修改。
+- **设备与 fixture：**冻结 APK 在 `PowerCal_Native095_MenuReference_20261107` / `emulator-5560`；Web v3 在 `PowerCal_Wave2_QA35_20261104` / `emulator-5556`。均为 API 35、1080×2400、420 dpi、GMT；WebView 124.0.6367.219。两侧使用相同日期及同名拥挤双翼 fixture。冻结 APK 的既有 QA Store 数据未清除。
+- **实测：**冻结 APK 与 Web v3 的目标 Android 方法分别 1/1 PASS。两端实际滑动揭示左翼 Deadline lane、点击日期芯片和 23:59 点打开同一 Deadline、无修改退出，并长按拖动为次日生成 `deadlineMillis=null` 的日期型草稿。正式事件日期、revision、commit 和 identity 保持不变；没有正式写入。冻结 APK 测试草稿已显式丢弃，保留为非活动 QA 草稿记录；Web fixture 仅清理自身 UUID 命名空间。
+- **几何：**Core 锚点 `1794095999999`；Native 视口底边/点位 y=1991 px，日期条根 bounds `[42,268]-[804,405]`。Web surface 高 602.2857 CSS px，点 y=601.75；日期条 x=16 CSS px（DPR 2.625 下为 42 physical px）。设备时钟相差约 3 分钟，蓝色当前时间线不作为像素对照条件。
+- **门禁：**完整串行 Gradle gate PASS；之后强制重跑 JVM 为 988/988、0 failures/errors/skips；正式默认包 verifier PASS（唯一 `powercal-clear-default.pcskin`，10 files / 420396 bytes，源与 APK SHA-256 `dd49636784dfab7ee356a114d3d4db0963087f37a4e1f0bc3ce505b766f9d14e`）。Debug APK SHA-256 `3E95E2992AD89EAE7BC8C0B59084F39504A27432A3533532BB78B1D6AD58EA56`。
+- **证据：**`.local/android-test/reports/native095-date-deadline-20261107/manifest.md`；冻结 APK 与 Web 截图 SHA-256 分别为 `029AE2D3B93C987F1D8072532CFD173B95A6DF396076DEFA964C7A86736DB23B` 与 `014302D1A12D1DA5CAE380DFDFC1AB107E450D595F36D058375AD2EA8FE7BFEA`。Issue：`docs/issues/PC-ISSUE-SEPARATION-NATIVE-TIMELINE-DATE-DEADLINE-20261106.md`。
+- **结论与缺口：**日期型 Deadline 时间轴窄切片 PASS；Timeline 整页、其他事件类型/视口/字体状态及全页面 Native/Web parity 仍 PARTIAL，Product Cutover 仍 HOLD。唯一下一项为 Draft Deck 空状态与 AI 锁定只读状态的冻结 Native/Web 对照。
