@@ -26,17 +26,17 @@ LAST_ATTEMPTED_COMMIT: 5a267814ca83a201f4d2c3a1c3df357c1d35c1a0
 NEXT_TASK: NATIVE_095_DRAFT_DECK_RECOVERY_CONFLICT_PARITY
 NEXT_ACTION: Compare frozen Native and Web v3 Draft Deck recovery, conflict, delete confirmation, completed-item undo, and process recovery using an isolated deterministic fixture. Preserve existing data; keep the complete Draft Deck and overall parity PARTIAL until all required states are paired.
 FUNCTIONAL_PREVIEW_DELIVERY:
-  status: DELIVERED (isolated QA Functional Preview; not a public release and not full Native 0.9.5 parity)
-  apk: dist/powercal/PowerCal-Functional-Preview-2026-11-07-05514a12.apk
-  apk_sha256: CF310827CA4C3A7989DB79A5D35F6F2755F2AD01E7601D28B40CA271C74492CB
-  apk_bytes: 67983743
-  build_source_commit: 05514a12c3cf6c0b62bfe2daad04fbbdf433097f
+  status: PACKAGED (internal Debug preview; full main-flow smoke not repeated for this refreshed APK)
+  apk: dist/powercal/PowerCal-Functional-Preview-2026-11-07-742ffbbd.apk
+  apk_sha256: 1DA53F916AE924C1583A2472CB10820754A7E4BD21E6EEBE433642505940D54A
+  apk_bytes: 67984965
+  build_checkout: 742ffbbdcd98e3763fd59c1e917088bae4f718e6
+  app_code_commit: 5a267814ca83a201f4d2c3a1c3df357c1d35c1a0
   package: dev.powerfulcalendar / 0.9.5-rc.1 / 905 / Debug
-  default_skin: powercal-clear-default; one .pcskin; source/APK SHA-256 78C13F92BB2878A559CCD57FE64FEA7F22D2137460620139C69155C7CBF5BB7E
-  device: PowerCal_Wave2_QA35_20261104 / emulator-5556 / API 35 / WebView 124.0.6367.219
-  verified: Gradle 987/987; Studio Python 90/90; binding catalog 9/9; all-kind create/edit, recurrence scopes, Memo paging/completion and two-phase process recovery instrumentation passed; Timeline/Month/Settings navigation observed
-  limitation: AI page entry only; chat-send instrumentation failed twice before Host request at trusted #chatSend pointerdown; no live provider used. Import/export, permission change, OEM reminder delivery, TalkBack and physical-device tests not rerun.
-  evidence: dist/powercal/PowerCal-Functional-Preview-2026-11-07.md; .local/android-test/reports/functional-preview-20261107/manifest.md
+  default_skin: powercal-clear-default; one .pcskin; source/APK SHA-256 13a6efc6af0e68a8d91c7786ac3bd0264dea630fe4880feefaa39251be869ffa
+  verified: assembleDebug PASS (UP-TO-DATE); official single-package verifier PASS; app-code commit full gate 989/989 JVM; current WebView Draft Deck target 1/1 and frozen Native reference 1/1; Studio Python 90/90
+  limitation: package refresh did not rerun complete main flow; Browser E2E, TalkBack, physical/OEM and live AI provider remain unverified; not a final Native visual parity build
+  evidence: dist/powercal/PowerCal-Functional-Preview-2026-11-07-742ffbbd.md; .local/android-test/reports/NATIVE_095_DRAFT_DECK_EMPTY_AI_LOCKED-20261107/manifest.md
 LATEST_SLICE_EVIDENCE:
   NATIVE_095_DRAFT_DECK_EMPTY_AI_LOCKED_PARITY:
     status: NARROW PASS (empty/no-draft visual state and AI-locked readonly card only; entire Draft Deck remains PARTIAL)

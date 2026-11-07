@@ -1,14 +1,21 @@
 # PowerCal Functional Preview
 
-## Latest validated build — 2026-11-07
+## Latest package — 2026-11-07
 
-- APK: `PowerCal-Functional-Preview-2026-11-07-05514a12.apk`
-- SHA-256: `CF310827CA4C3A7989DB79A5D35F6F2755F2AD01E7601D28B40CA271C74492CB`
-- Built from code commit `05514a12c3cf6c0b62bfe2daad04fbbdf433097f`; package `dev.powerfulcalendar`, version `0.9.5-rc.1` (`905`), Debug.
-- Default package: one `powercal-clear-default.pcskin`; source/APK asset SHA-256 `78C13F92BB2878A559CCD57FE64FEA7F22D2137460620139C69155C7CBF5BB7E`.
-- Installation, smoke results and limitations: [PowerCal Functional Preview 2026-11-07](PowerCal-Functional-Preview-2026-11-07.md).
+- APK: PowerCal-Functional-Preview-2026-11-07-742ffbbd.apk
+- SHA-256: 1DA53F916AE924C1583A2472CB10820754A7E4BD21E6EEBE433642505940D54A
+- Build checkout: 742ffbbdcd98e3763fd59c1e917088bae4f718e6; app code: 5a267814ca83a201f4d2c3a1c3df357c1d35c1a0
+- Package: dev.powerfulcalendar / 0.9.5-rc.1 / 905 / Debug
+- Default package: one powercal-clear-default.pcskin; SHA-256 13a6efc6af0e68a8d91c7786ac3bd0264dea630fe4880feefaa39251be869ffa
+- Package details and limitations: [2026-11-07 preview report](PowerCal-Functional-Preview-2026-11-07-742ffbbd.md).
 
-This preview is for isolated QA. It is not the finished Native 0.9.5 visual migration or a public release. Product Cutover remains `HOLD`.
+This is an internal preview. The current default Skin is provisional and is not signed off as the final Native 0.9.5 visual migration. Full main-flow smoke was not repeated for this refreshed APK; Product Cutover remains HOLD.
+
+## Previous functional preview — 2026-11-07
+
+- APK: PowerCal-Functional-Preview-2026-11-07-05514a12.apk
+- SHA-256: CF310827CA4C3A7989DB79A5D35F6F2755F2AD01E7601D28B40CA271C74492CB
+- Its original smoke-test record remains in [PowerCal Functional Preview 2026-11-07](PowerCal-Functional-Preview-2026-11-07.md).
 
 ---
 
