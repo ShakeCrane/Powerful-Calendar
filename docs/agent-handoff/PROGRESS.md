@@ -1,3 +1,12 @@
+## 2026-11-07 Native 0.9.5 双翼初始边缘运行行为复核（窄切片 PASS）
+
+- **基线和提交：**冻结源 `b1f7629f0c52812e1887443872f43aa6c49908c4`，冻结 APK SHA-256 `DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76`；本轮测试提交 `e9ec15e113025cb1f819e5d37b3eba7cd49c9e4d`。仅新增/调整 Android 仪器测试及 Browser E2E，未保留 app.js 或其他产品代码修改。
+- **更正：**源码 LEFT `rememberScrollState(Int.MAX_VALUE)` 不是最终启动滚动位置的可靠证据。冻结原始 APK 的 API 35 实测初值是 `scroll=0`，当前 Web v3 也为 `scrollLeft=0`；没有推断 Compose 内部钳制原因。
+- **实测：**Native lane 3 左事件 x=32..253、lane 1 右事件 x=824..1045；Web 换算分别约 x=31.46..251.65 与 823.36..1043.55，横向边缘最大差约 1.5 px。两端均真实触控打开/关闭事件并独立滑动左右翼，Store 计数保持不变。事件 y 顶边还有约 5.36 px 差，不由本切片签核。
+- **验证：**Raw 冻结 APK 与当前 Web Android 目标方法各 1/1 PASS；串行 Gradle 142 XML / 988 JVM，0 failures/errors/skips；边界、APK、Lint、AndroidTest compile、Node syntax、完整 Browser E2E、唯一默认包官方校验 PASS。APK SHA `3E95E2992AD89EAE7BC8C0B59084F39504A27432A3533532BB78B1D6AD58EA56`；唯一 `.pcskin` 10 项 / 420396 bytes，源/APK SHA `dd49636784dfab7ee356a114d3d4db0963087f37a4e1f0bc3ce505b766f9d14e`。
+- **证据：**`.local/android-test/reports/native095-timeline-initial-left-20261107/manifest.md`、`docs/issues/PC-ISSUE-SEPARATION-NATIVE-TIMELINE-INITIAL-LEFT-20261107.md`、`docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md`；Native/Web 截图 SHA 分别 `6D99B750900D4207618A16B9C9DEE2BEF4FC11386BE5AD421B1FF5C63A0AAF33` / `B38F9E797A0AF6C279411819ED8658327E7C921B24F813179F51C6270F947525`。
+- **未关闭项：**日期型 Deadline 的日期带与 23:59 锚点尚无同夹具 Android A/B；Studio Mock 不是设备证据。其余 Timeline/Deck 页面状态仍 PARTIAL；Native 恢复保留，Product Cutover HOLD。**下一项：**先完成日期型 Deadline Native/Web Android A/B，再继续 Deck 空态/暂存、AI 锁定、恢复/冲突、删除确认、完成撤销及 IME/无障碍。
+
 ## 2026-11-07 Functional Preview delivered; resume Native 0.9.5 parity
 
 - **Checkpoint:** `PowerCal Functional Preview` is fixed at `dist/powercal/PowerCal-Functional-Preview-2026-11-07-05514a12.apk`, built from code commit `05514a12c3cf6c0b62bfe2daad04fbbdf433097f`. SHA-256 `CF310827CA4C3A7989DB79A5D35F6F2755F2AD01E7601D28B40CA271C74492CB`, 67,983,743 bytes, Debug `dev.powerfulcalendar` 0.9.5-rc.1 (905). It contains one `powercal-clear-default.pcskin`, matching the official source build at SHA-256 `78C13F92BB2878A559CCD57FE64FEA7F22D2137460620139C69155C7CBF5BB7E`. Package and installation instructions: `dist/powercal/PowerCal-Functional-Preview-2026-11-07.md`.

@@ -8,23 +8,23 @@ OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: 26cea3e974c5f695b940d8b26c9fa19a8641cc9c (Native 0.9.5 Draft Deck persisted-stack narrow parity slice)
-LATEST_VERIFIED_HEAD: 26cea3e974c5f695b940d8b26c9fa19a8641cc9c (serial Gradle PASS; 988/988 JVM; exact rebuilt package verified; API 35 target Deck test 1/1; Studio Python 90/90; focused Deck browser E2Es PASS; integrated browser E2E has a separately tracked Timeline initial-lane failure)
-CURRENT_TASK: NATIVE_095_DRAFT_DECK_VISUAL_PARITY
+LATEST_CODE_HEAD: e9ec15e113025cb1f819e5d37b3eba7cd49c9e4d (Native 0.9.5 dual-wing initial-edge instrumentation and Browser E2E; product UI source unchanged)
+LATEST_VERIFIED_HEAD: e9ec15e113025cb1f819e5d37b3eba7cd49c9e4d (serial Gradle PASS; 988/988 JVM; source boundaries, assemble, lint and AndroidTest compile PASS; frozen Native and current Web API 35 dual-wing tests 1/1 each; official package verification and full Browser E2E PASS)
+CURRENT_TASK: NATIVE_095_VISUAL_PARITY
 TASK_STATUS: IN_PROGRESS
 PRODUCT_CUTOVER: HOLD
 TASK_BASE_HEAD: 05514a12c3cf6c0b62bfe2daad04fbbdf433097f
 WORKING_APK_SHA256: 3E95E2992AD89EAE7BC8C0B59084F39504A27432A3533532BB78B1D6AD58EA56
 WORKING_DEFAULT_SKIN_SHA256: dd49636784dfab7ee356a114d3d4db0963087f37a4e1f0bc3ce505b766f9d14e
 WORKING_DEFAULT_SKIN_ID: powercal-clear-default
-NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; pinch slice narrow PASS; full page parity remains IN PROGRESS)
+NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; pinch and dual-wing initial-edge slices narrow PASS; full page parity remains IN PROGRESS)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
-LAST_COMPLETED_TASK: Native 0.9.5 Draft Deck persisted stack/search/browse presentation (narrow PASS; complete Deck remains PARTIAL)
-LAST_COMPLETED_COMMIT: 26cea3e974c5f695b940d8b26c9fa19a8641cc9c
+LAST_COMPLETED_TASK: Native 0.9.5 dual-wing initial-edge parity verification (narrow PASS; full Timeline and Draft Deck remain PARTIAL)
+LAST_COMPLETED_COMMIT: e9ec15e113025cb1f819e5d37b3eba7cd49c9e4d
 LAST_ATTEMPTED_TASK: PowerCal Functional Preview artifact and main-flow smoke (DELIVERED for isolated QA; AI chat send NOT TESTED after two identical trusted-touch automation failures)
 LAST_ATTEMPTED_COMMIT: 05514a12c3cf6c0b62bfe2daad04fbbdf433097f (APK build baseline)
-NEXT_TASK: NATIVE_095_DRAFT_DECK_VISUAL_PARITY
-NEXT_ACTION: Close the independent Timeline mismatch found by the integrated Browser E2E: verify left-wing initial-lane position and date-only Deadline lane projection against the frozen Native fixture on API 35, with targeted Android checks. Then continue the still-PARTIAL Draft Deck empty/transient, AI-locked, restore/conflict, delete-confirmation, completion/undo and IME/accessibility states.
+NEXT_TASK: NATIVE_095_TIMELINE_DATE_DEADLINE_PARITY
+NEXT_ACTION: Compare the date-only Deadline date-band chip and its 23:59 timeline anchor on the frozen Native APK and current Web v3 with the same API 35 fixture. Android A/B is NOT TESTED in the just-completed dual-wing slice; Studio Mock evidence is not device evidence. Then continue the PARTIAL Draft Deck empty/transient, AI-locked, restore/conflict, delete-confirmation, completion/undo and IME/accessibility states.
 FUNCTIONAL_PREVIEW_DELIVERY:
   status: DELIVERED (isolated QA Functional Preview; not a public release and not full Native 0.9.5 parity)
   apk: dist/powercal/PowerCal-Functional-Preview-2026-11-07-05514a12.apk
@@ -38,6 +38,20 @@ FUNCTIONAL_PREVIEW_DELIVERY:
   limitation: AI page entry only; chat-send instrumentation failed twice before Host request at trusted #chatSend pointerdown; no live provider used. Import/export, permission change, OEM reminder delivery, TalkBack and physical-device tests not rerun.
   evidence: dist/powercal/PowerCal-Functional-Preview-2026-11-07.md; .local/android-test/reports/functional-preview-20261107/manifest.md
 LATEST_SLICE_EVIDENCE:
+  NATIVE_095_TIMELINE_INITIAL_LEFT:
+    status: NARROW PASS (frozen runtime and Web both start at outer lane edge; product UI source unchanged; Timeline remains PARTIAL)
+    code_commit: e9ec15e113025cb1f819e5d37b3eba7cd49c9e4d
+    source_baseline: b1f7629f0c52812e1887443872f43aa6c49908c4
+    original_apk_sha256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
+    current_apk_sha256: 3E95E2992AD89EAE7BC8C0B59084F39504A27432A3533532BB78B1D6AD58EA56
+    default_skin_sha256: dd49636784dfab7ee356a114d3d4db0963087f37a4e1f0bc3ce505b766f9d14e (10 files / 420396 bytes; one package; source/APK bytes match)
+    android: Native reference PowerCal_Native095_MenuReference_20261107 / emulator-5560; Web QA PowerCal_Wave2_QA35_20261104 / emulator-5556; API 35, 1080x2400, 420 dpi, GMT; WebView 124.0.6367.219
+    geometry: Native left lane-3 x=32..253 px, right lane-1 x=824..1045 px; Web converted x=31.46..251.65 and 823.36..1043.55 px; initial scroll=0 on both wings in both runtimes; vertical edge delta about 5.36 px is outside this narrow horizontal signoff
+    store: Native baseline 3 drafts / 8 commits / 11 identities and isolated Web fixture 0 drafts / 8 commits / 8 identities remained unchanged during event open/close and independent wing scrolling
+    tests: serial Gradle 988/988 JVM; boundaries, assemble, lint, AndroidTest compile PASS; raw APK and current Android WebView target tests 1/1 each; full Browser E2E PASS; official default package verification PASS
+    screenshots: Native 6D99B750900D4207618A16B9C9DEE2BEF4FC11386BE5AD421B1FF5C63A0AAF33; Web B38F9E797A0AF6C279411819ED8658327E7C921B24F813179F51C6270F947525
+    evidence: .local/android-test/reports/native095-timeline-initial-left-20261107/manifest.md; docs/issues/PC-ISSUE-SEPARATION-NATIVE-TIMELINE-INITIAL-LEFT-20261107.md; docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md
+    residuals: frozen source comment initializes LEFT with Int.MAX_VALUE but actual APK startup is 0; internal Compose cause not asserted. Date-only Deadline Android A/B, other Timeline states and all remaining page parity stay open; Product Cutover HOLD
   NATIVE_095_DRAFT_DECK_STACK:
     status: NARROW PASS (persisted stack, search/browse, proposal route, scrim and system bars; complete Deck remains PARTIAL)
     code_commit: 26cea3e974c5f695b940d8b26c9fa19a8641cc9c
@@ -820,7 +834,7 @@ LATEST_VERIFIED_EVIDENCE:
     device_scope: connected task also ran 1/1 on PowerCal_Native095_RawFixture_20261106/emulator-5590; unintended enumeration, no unchanged-state claim, no further commands there
     evidence: .local/android-test/reports/native095-ai-bubbles-20261107/manifest.md; docs/issues/PC-ISSUE-SEPARATION-NATIVE-AI-BUBBLE-CHROME-20261107.md; docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md
     limitation: AI menu visual layout, attachment/proposal/error/retry, composer and whole-page behavior remain open; dark mode was computed-style asserted, not screenshot-compared; Product Cutover HOLD
-BLOCKERS: Whole-surface Native-to-Web parity remains incomplete. Remaining Timeline states include dense/multilane, locked, empty and broader accessibility behavior. Month, Memo (including the Web-only load-more control), editor/Draft Deck geometry, AI message-action menu appearance, attachment/proposal/error/retry states and whole-page comparisons, and Settings routes remain open. AI history paging and the 6000-code-unit input boundary have narrow PASS evidence, but the entire AI page remains PARTIAL. Studio full Python suite now passes 90/90 and the targeted Preview Mock E2E passes; the broader browser E2E suite's previous pre-Timeline palette assertion failure was not rerun in this slice. Forced checkpoint-I/O failure, physical/OEM reminder delivery and live AI provider reliability remain NOT TESTED. Product Cutover remains HOLD.
+BLOCKERS: Whole-surface Native-to-Web parity remains incomplete. The just-verified left-wing initial edge is a narrow PASS; date-only Deadline Android A/B, other dense/multilane/locked/empty Timeline states and accessibility remain open. Month, Memo (including the Web-only load-more control), editor/Draft Deck states, AI attachment/proposal/error/retry states and full-page comparisons, and Settings routes remain open. AI history paging and the 6000-code-unit input boundary have narrow PASS evidence, but the AI page remains PARTIAL. Full Browser E2E now passes on the current test suite. Forced checkpoint-I/O failure, physical/OEM reminder delivery and live AI provider reliability remain NOT TESTED. Product Cutover remains HOLD.
 
 AUTHORITATIVE_PLAN: docs/POWERCAL_SINGLE_DEFAULT_SKIN_EXECUTION_PLAN_2026-11-03_R2.md
 ACCEPTANCE_MATRIX: docs/agent-handoff/SINGLE_SKIN_ACCEPTANCE.md
