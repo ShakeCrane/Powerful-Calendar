@@ -5,11 +5,16 @@ import android.content.ContextWrapper
 import android.database.DatabaseErrorHandler
 import android.database.sqlite.SQLiteDatabase
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Color
 import android.os.SystemClock
 import android.os.Handler
 import android.os.Looper
+import android.view.InputDevice
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
 import android.view.PixelCopy
 import android.webkit.WebView
 import androidx.activity.ComponentActivity
@@ -24,6 +29,7 @@ import dev.powerfulcalendar.core.DraftOperation
 import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.TemporalKind
 import org.json.JSONObject
+import org.json.JSONArray
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -133,6 +139,83 @@ class DraftDeckSearchWebViewInstrumentedTest {
                 "if(!form||!input)return false;input.value=$value;form.requestSubmit();return true})()"))
     }
 
+    private fun canTouchOutsideDeckWithoutSystemGesture(web: WebView): Boolean {
+        val geometry = JSONObject(JSONArray("[" + evaluate(web,
+            "JSON.stringify({width:innerWidth,left:document.querySelector('#skinSheet .sheet-panel')" +
+                "?.getBoundingClientRect().left||0})") + "]").getString(0))
+        val systemLeftPx = AtomicReference(0)
+        val viewWidthPx = AtomicReference(0)
+        compose.runOnUiThread {
+            systemLeftPx.set(web.rootWindowInsets?.getInsets(WindowInsets.Type.systemGestures())?.left ?: 0)
+            viewWidthPx.set(web.width)
+        }
+        val scale = viewWidthPx.get() / geometry.getDouble("width")
+        val outsideStartX = geometry.getDouble("left") - 2.0
+        val systemGestureWidthCss = systemLeftPx.get() / scale
+        val available = outsideStartX > systemGestureWidthCss + 8.0
+        println("DK01_OUTSIDE_TOUCH_AVAILABLE=$available leftGutterCss=${geometry.getDouble("left")}" +
+            " systemGestureInsetCss=$systemGestureWidthCss")
+        return available
+    }
+
+    private fun swipeWebTarget(web: WebView, selector: String, deltaCssX: Double, outsideSheet: Boolean = false) {
+        val selectorValue = JSONObject.quote(selector)
+        val anchor = if (outsideSheet) {
+            "(()=>{const panel=document.querySelector('#skinSheet .sheet-panel');" +
+                "const pr=panel?.getBoundingClientRect();" +
+                "return {x:pr&&pr.left>2?pr.left-2:innerWidth-2,y:innerHeight*.5}})()"
+        } else "{x:r.left+r.width*.5,y:r.top+r.height*.5}"
+        val raw = evaluate(web,
+            "(()=>{const e=document.querySelector($selectorValue);if(!e)return null;" +
+                "const r=e.getBoundingClientRect();const p=$anchor;" +
+                "return JSON.stringify({x:p.x,y:p.y,cssWidth:innerWidth,cssHeight:innerHeight," +
+                "rect:[r.left,r.top,r.width,r.height]," +
+                "panel:(()=>{const q=document.querySelector('#skinSheet .sheet-panel')?.getBoundingClientRect();" +
+                "return q?[q.left,q.top,q.width,q.height]:null})()})})()")
+        val point = JSONObject(JSONArray("[$raw]").getString(0))
+        if (outsideSheet) {
+            val panel = point.getJSONArray("panel")
+            val (panelLeft, panelTop, panelWidth, panelHeight) = (0..3).map { panel.getDouble(it) }
+            val x = point.getDouble("x")
+            val y = point.getDouble("y")
+            assertTrue("outside swipe must start above the sheet panel: point=$x,$y panel=$panel",
+                x < panelLeft || x > panelLeft + panelWidth || y < panelTop || y > panelTop + panelHeight)
+        }
+        val origin = IntArray(2)
+        val dimensions = AtomicReference<Pair<Int, Int>>()
+        compose.runOnUiThread { web.getLocationOnScreen(origin); dimensions.set(web.width to web.height) }
+        val (widthPx, heightPx) = requireNotNull(dimensions.get())
+        val scaleX = widthPx / point.getDouble("cssWidth")
+        val scaleY = heightPx / point.getDouble("cssHeight")
+        assertTrue("Web CSS-to-screen scales differ: $scaleX/$scaleY", kotlin.math.abs(scaleX-scaleY)<0.03)
+        val startX = origin[0] + (point.getDouble("x") * scaleX).toFloat()
+        val startY = origin[1] + (point.getDouble("y") * scaleY).toFloat()
+        val endX = startX + (deltaCssX * scaleX).toFloat()
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val automation = instrumentation.uiAutomation
+        val downTime = SystemClock.uptimeMillis()
+        fun inject(action: Int, eventTime: Long, x: Float) {
+            val event = MotionEvent.obtain(downTime, eventTime, action, x, startY, 0).apply {
+                source = InputDevice.SOURCE_TOUCHSCREEN
+            }
+            try {
+                assertTrue("Android rejected deck swipe action=$action",
+                    automation.injectInputEvent(event, true))
+            } finally { event.recycle() }
+        }
+        inject(MotionEvent.ACTION_DOWN, downTime, startX)
+        repeat(8) { index ->
+            SystemClock.sleep(25)
+            val fraction = (index + 1) / 8f
+            inject(MotionEvent.ACTION_MOVE, SystemClock.uptimeMillis(),
+                startX + (endX - startX) * fraction)
+        }
+        inject(MotionEvent.ACTION_UP, SystemClock.uptimeMillis(), endX)
+        println("DK01_TOUCH selector=$selector cssPoint=${point.getDouble("x")},${point.getDouble("y")}" +
+            " cssRect=${point.getJSONArray("rect")} cssPanel=${point.getJSONArray("panel")}" +
+            " cssDelta=$deltaCssX scale=$scaleX")
+    }
+
     private fun assertSheetVisiblyOpen(web: WebView) {
         val visible = evaluate(web,
             "(()=>{const e=document.querySelector('#skinSheet');" +
@@ -208,6 +291,21 @@ class DraftDeckSearchWebViewInstrumentedTest {
         return file
     }
 
+    private fun saveDisplayScreenshot(name: String, web: WebView): File {
+        awaitNextWebViewFrame(web)
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        assertSheetVisiblyOpen(web)
+        val bitmap = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
+        val file = File(requireNotNull(compose.activity.externalCacheDir), name)
+        try {
+            file.outputStream().use { output ->
+                assertTrue("display screenshot must encode", bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
+            }
+        } finally { bitmap.recycle() }
+        println("S0_DK01_DISPLAY_SCREENSHOT=${file.absolutePath} bytes=${file.length()}")
+        return file
+    }
+
     private fun awaitNextWebViewFrame(web: WebView) {
         assertEquals("true", evaluate(web,
             "(()=>{window.__powerCalVisualTestReady=false;" +
@@ -229,10 +327,12 @@ class DraftDeckSearchWebViewInstrumentedTest {
 
         try {
             store.readableDatabase
-            titles.forEach { title ->
-                drafts += store.newDraft(
-                    DraftForm(kind = TemporalKind.MEMO, title = title, zoneId = zone.id)
-                )
+            titles.forEachIndexed { index, title ->
+                val form = if (index == 0) {
+                    DraftForm(kind = TemporalKind.ACTIVITY, title = title,
+                        startText = "2026-11-06 12:00", endText = "2026-11-06 13:00", zoneId = zone.id)
+                } else DraftForm(kind = TemporalKind.MEMO, title = title, zoneId = zone.id)
+                drafts += store.newDraft(form)
             }
             val formal = store.createFormalEvent(
                 DraftForm(kind = TemporalKind.MEMO, title = "DK01_FORMAL_REPLACE_TARGET", zoneId = zone.id),
@@ -274,20 +374,137 @@ class DraftDeckSearchWebViewInstrumentedTest {
                 "document.querySelector('[data-action=\\\"openDeck\\\"]').click();true"))
             awaitJs(view, "!!document.querySelector('.deck-search input[type=search]') &&" +
                 "document.querySelector('#skinSheet')?.hidden===false &&" +
-                "document.querySelectorAll('.sheet-cards .sheet-card').length===3")
+                "document.querySelector('.sheet-deck-navigation span')?.textContent?.startsWith('1 / 3')")
+            awaitJs(view, "document.querySelector('.deck-summary strong')?.textContent===" +
+                JSONObject.quote(titles.first()))
+            val collapsedDeckGeometry = evaluate(view,
+                "JSON.stringify({sheet:document.querySelector('#skinSheet').getBoundingClientRect().toJSON()," +
+                    "header:document.querySelector('.sheet-head').getBoundingClientRect().toJSON()," +
+                    "search:document.querySelector('.deck-search').getBoundingClientRect().toJSON()," +
+                    "card:document.querySelector('.deck-card-surface').getBoundingClientRect().toJSON()," +
+                    "hint:document.querySelector('.deck-gesture-hint').getBoundingClientRect().toJSON()," +
+                    "scrim:getComputedStyle(document.querySelector('.sheet-shade')).backgroundColor})")
+            println("DK01_COLLAPSED_WEB_GEOMETRY=$collapsedDeckGeometry")
+            val geometry = JSONObject(JSONArray("[$collapsedDeckGeometry]").getString(0))
+            val headerGeometry = geometry.getJSONObject("header")
+            val searchGeometry = geometry.getJSONObject("search")
+            val sheetGeometry = geometry.getJSONObject("sheet")
+            val cardGeometry = geometry.getJSONObject("card")
+            val density = view.resources.displayMetrics.density
+            val webLocation = IntArray(2).also(view::getLocationOnScreen)
+            val webHeaderTopScreenPx = webLocation[1] + headerGeometry.getDouble("top") * density
+            val webHeaderHeightPx = headerGeometry.getDouble("height") * density
+            val webSearchTopScreenPx = webLocation[1] + searchGeometry.getDouble("top") * density
+            val webSearchHeightPx = searchGeometry.getDouble("height") * density
+            val webCardHeightPx = cardGeometry.getDouble("height") * density
+            val webCardCenterScreenPx = webLocation[1] +
+                (cardGeometry.getDouble("top") + cardGeometry.getDouble("height") / 2.0) * density
+            val nativeCenterForCurrentViewportPx = 1344.5 -
+                (842.2857055664062 - sheetGeometry.getDouble("height")) * density / 2.0
+            println("DK01_NATIVE_CARD_GEOMETRY_CHECK=" +
+                "webHeaderTop=$webHeaderTopScreenPx nativeHeaderTop=157 " +
+                "webHeaderHeight=$webHeaderHeightPx nativeHeaderHeight=125 " +
+                "webSearchTop=$webSearchTopScreenPx nativeSearchTop=301 " +
+                "webSearchHeight=$webSearchHeightPx nativeSearchHeight=144 " +
+                "webHeightPx=$webCardHeightPx nativeHeightPx=1087 " +
+                "webCenterScreenPx=$webCardCenterScreenPx " +
+                "nativeCenterForCurrentViewportPx=$nativeCenterForCurrentViewportPx " +
+                "webViewScreenY=${webLocation[1]}")
+            assertTrue("header top should match frozen Native header",
+                kotlin.math.abs(webHeaderTopScreenPx - 157.0) <= 24.0)
+            assertTrue("header height should match frozen Native header",
+                kotlin.math.abs(webHeaderHeightPx - 125.0) <= 24.0)
+            assertTrue("search top should match frozen Native search field",
+                kotlin.math.abs(webSearchTopScreenPx - 301.0) <= 24.0)
+            assertTrue("search height should match frozen Native search field",
+                kotlin.math.abs(webSearchHeightPx - 144.0) <= 24.0)
+            assertTrue("collapsed Web card should match frozen Native card height",
+                kotlin.math.abs(webCardHeightPx - 1087.0) <= 24.0)
+            assertTrue("collapsed Web card should match frozen Native card center",
+                kotlin.math.abs(webCardCenterScreenPx - nativeCenterForCurrentViewportPx) <= 24.0)
+            saveScreenshot("s0-dk01-collapsed-card.png", view)
+            val displayScreenshot = saveDisplayScreenshot("s0-dk01-full-display.png", view)
+            val display = BitmapFactory.decodeFile(displayScreenshot.absolutePath)
+            try {
+                val statusBar = display.getPixel(500, 20)
+                val navigationBar = display.getPixel(500, display.height - 20)
+                fun assertNearNativeBar(name: String, actual: Int) {
+                    val channels = listOf(Color.red(actual), Color.green(actual), Color.blue(actual))
+                    val expected = listOf(56, 57, 58)
+                    assertTrue("$name should follow the frozen Native deck dim: $channels",
+                        channels.zip(expected).all { (value, reference) -> kotlin.math.abs(value - reference) <= 12 })
+                }
+                assertNearNativeBar("status bar", statusBar)
+                assertNearNativeBar("navigation bar", navigationBar)
+                println("DK01_SYSTEM_BARS_NATIVE_MATCH=" +
+                    "status=#${Integer.toHexString(statusBar)} navigation=#${Integer.toHexString(navigationBar)}")
+            } finally {
+                display.recycle()
+            }
             assertEquals(initialDraftCount, store.draftCount())
             assertEquals(initialPendingCount, store.pendingCount())
             assertEquals(initialIdentityCount, store.identityCount())
             assertEquals(initialCommitCount, store.commitCount())
 
+            swipeWebTarget(view, ".deck-summary", -100.0)
+            awaitJs(view, "document.querySelector('.deck-summary strong')?.textContent===" +
+                JSONObject.quote(titles[1]) +
+                "&&document.querySelector('.sheet-deck-navigation span')?.textContent?.startsWith('2 / 3')")
+            assertEquals("card swipe navigates without changing the Core queue", initialDraftCount, store.draftCount())
+            assertEquals(initialPendingCount, store.pendingCount())
+            assertEquals(initialIdentityCount, store.identityCount())
+            assertEquals(initialCommitCount, store.commitCount())
+
+            if (canTouchOutsideDeckWithoutSystemGesture(view)) {
+                swipeWebTarget(view, "#sheetShade", -100.0, outsideSheet = true)
+                awaitJs(view, "document.querySelector('.deck-summary strong')?.textContent===" +
+                    JSONObject.quote(titles[2]))
+                swipeWebTarget(view, "#sheetShade", 100.0, outsideSheet = true)
+                awaitJs(view, "document.querySelector('.deck-summary strong')?.textContent===" +
+                    JSONObject.quote(titles[1]))
+                swipeWebTarget(view, ".deck-summary", 100.0)
+                awaitJs(view, "document.querySelector('.deck-summary strong')?.textContent===" +
+                    JSONObject.quote(titles.first()))
+            } else {
+                // Gesture navigation owns both narrow side gutters; test the same
+                // Core deck movement through the Native-equivalent in-card gesture.
+                println("DK01_OUTSIDE_SWIPE_NOT_TESTED=system gesture inset covers sheet gutter")
+                swipeWebTarget(view, ".deck-summary", -100.0)
+                awaitJs(view, "document.querySelector('.deck-summary strong')?.textContent===" +
+                    JSONObject.quote(titles[2]))
+                swipeWebTarget(view, ".deck-summary", 100.0)
+                awaitJs(view, "document.querySelector('.deck-summary strong')?.textContent===" +
+                    JSONObject.quote(titles[1]))
+                swipeWebTarget(view, ".deck-summary", 100.0)
+                awaitJs(view, "document.querySelector('.deck-summary strong')?.textContent===" +
+                    JSONObject.quote(titles.first()))
+            }
+            assertEquals("inside and outside swipes must remain browse-only", initialDraftCount, store.draftCount())
+            assertEquals(initialPendingCount, store.pendingCount())
+            assertEquals(initialIdentityCount, store.identityCount())
+            assertEquals(initialCommitCount, store.commitCount())
+            assertEquals("true", evaluate(view, "document.querySelector('.deck-summary')?.click();true"))
+            awaitJs(view, "!!document.querySelector('#sheetFields [data-field=\"title\"]')")
+            assertEquals("true", evaluate(view,
+                "document.querySelector('.deck-expand-toggle')?.click();true"))
+            awaitJs(view, "!!document.querySelector('.deck-summary') && " +
+                "!document.querySelector('#sheetFields [data-field=\"title\"]')")
+
             assertEquals("true", evaluate(view,
                 "document.querySelector('.sheet-deck-navigation [data-do=\\\"jump\\\"][data-steps=\\\"1\\\"]')?.click();true"))
+            awaitJs(view, "document.querySelector('.deck-summary strong')?.textContent===" +
+                JSONObject.quote(titles[1]))
+            assertEquals("true", evaluate(view, "document.querySelector('.deck-summary')?.click();true"))
             awaitJs(view,
                 "document.querySelector('#sheetFields [data-field=\\\"title\\\"]')?.value===" +
                     JSONObject.quote(titles[1]))
             assertEquals("navigation must not reorder persistent queue identities",
                 queueOrderBefore, drafts.map { requireNotNull(store.draft(it.draftId)).queueOrder })
 
+            assertEquals("true", evaluate(view,
+                "document.querySelector('.deck-expand-toggle')?.click();true"))
+            awaitJs(view, "!!document.querySelector('.deck-summary') &&" +
+                "!document.querySelector('#sheetFields [data-field=\"title\"]')")
             submitSearch(view, "PENDING")
             awaitJs(view, "document.querySelectorAll('.sheet-cards .sheet-card').length===2 &&" +
                 "document.querySelectorAll('.deck-formal-results .deck-result').length===0")
@@ -295,6 +512,9 @@ class DraftDeckSearchWebViewInstrumentedTest {
             assertEquals("true", evaluate(view,
                 "Array.from(document.querySelectorAll('.sheet-cards .sheet-card'))." +
                     "find(button=>button.dataset.draftId===$secondDraftId)?.click();true"))
+            awaitJs(view, "document.querySelector('.deck-summary strong')?.textContent===" +
+                JSONObject.quote(titles[1]))
+            assertEquals("true", evaluate(view, "document.querySelector('.deck-summary')?.click();true"))
             awaitJs(view,
                 "document.querySelector('#sheetFields [data-field=\\\"title\\\"]')?.value===" +
                     JSONObject.quote(titles[1]))

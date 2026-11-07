@@ -22,55 +22,70 @@ const studioUrl=process.env.STUDIO_URL||"http://127.0.0.1:8765";
     await page.click("#interactMode");
     const frame=page.frames().find(candidate=>candidate.url().includes("/preview/"));
     assert.ok(frame,"Clear package preview frame is loaded");
+    const clickPreview=async selector=>{
+      await frame.waitForSelector(selector,{visible:true});
+      await frame.$eval(selector,node=>{
+        node.scrollIntoView({block:"center",inline:"center"});
+        node.click();
+      });
+    };
 
-    await frame.click('[data-action="openDeck"]');
+    await clickPreview('[data-action="openDeck"]');
     await frame.waitForFunction(()=>!document.querySelector("#skinSheet").hidden&&
       !!document.querySelector(".deck-search"));
     await frame.$eval(".deck-search input",input=>{
       input.value="#6201";document.querySelector(".deck-search").requestSubmit();
     });
     await frame.waitForFunction(()=>document.querySelector(".deck-formal-results .deck-result")
-      ?.textContent.includes("#6201"));
+      ?.textContent.includes("#6201")&&document.querySelector("#skinSheet")?.getAttribute("aria-busy")==="false");
     assert.ok((await frame.$eval(".deck-formal-results .deck-result",button=>button.textContent))
       .includes("正式事件替换目标"),"Formatted event sequence search matches the Host contract");
     await frame.$eval(".deck-search input",input=>{
       input.value="正式事件替换目标";document.querySelector(".deck-search").requestSubmit();
     });
     await frame.waitForFunction(()=>document.querySelector(".deck-formal-results .deck-result")
-      ?.textContent.includes("正式事件替换目标"));
+      ?.textContent.includes("正式事件替换目标")&&document.querySelector("#skinSheet")?.getAttribute("aria-busy")==="false");
     const formalResult=await frame.$eval(".deck-formal-results .deck-result",button=>button.textContent);
     assert.ok(formalResult.includes("正式事件替换目标"));
-    await frame.click(".deck-formal-results [data-do=replace]");
-    await frame.waitForFunction(()=>document.querySelector('#sheetFields [data-field="title"]')?.value===
-      "正式事件替换目标");
+    await clickPreview(".deck-formal-results [data-do=replace]");
+    await frame.waitForFunction(()=>document.querySelector("#sheetStatus")?.textContent===""&&
+      document.querySelector('#sheetFields [data-field="title"]')?.value===
+      "正式事件替换目标"&&document.querySelector("#skinSheet")?.getAttribute("aria-busy")==="false");
 
     await frame.$eval(".deck-search input",input=>{
       input.value="示例草稿";document.querySelector(".deck-search").requestSubmit();
     });
-    await frame.waitForFunction(()=>document.querySelectorAll(".sheet-cards [data-draft-id]").length===4);
-    await frame.click('.sheet-cards [data-draft-id="7202"]');
+    await frame.waitForFunction(()=>document.querySelectorAll(".sheet-cards [data-draft-id]").length===4&&
+      document.querySelector("#skinSheet")?.getAttribute("aria-busy")==="false");
+    await clickPreview('.sheet-cards [data-draft-id="7202"]');
+    await frame.waitForFunction(()=>document.querySelector(".deck-summary")&&
+      document.querySelector("#skinSheet")?.getAttribute("aria-busy")==="false");
+    await clickPreview(".deck-summary");
     await frame.waitForFunction(()=>document.querySelector('#sheetFields [data-field="title"]')?.value===
       "示例草稿二");
-    await frame.click('[data-do="jump"][data-steps="1"]');
+    await clickPreview('[data-do="jump"][data-steps="1"]');
+    await frame.waitForFunction(()=>document.querySelector(".deck-summary")&&
+      document.querySelector("#skinSheet")?.getAttribute("aria-busy")==="false");
+    await clickPreview(".deck-summary");
     await frame.waitForFunction(()=>document.querySelector('#sheetFields [data-field="title"]')?.value===
-      "示例草稿三"&&document.querySelector(".sheet-deck-navigation span")?.textContent==="3 / 6");
+      "示例草稿三"&&document.querySelector(".sheet-deck-navigation span")?.textContent?.startsWith("3 / 6"));
 
     for(const name of ["deck.search","deck.proposeReplace","deck.select","deck.jump"]){
       assert.ok(await page.evaluate(value=>document.querySelector("#bridgeLog").textContent
         .includes("预览编辑命令 "+value),name),name+" is handled by the Studio Preview Mock");
     }
-    await frame.click("#sheetClose");
+    await clickPreview("#sheetClose");
     await frame.waitForFunction(()=>document.querySelector("#skinSheet").hidden);
 
-    await frame.click(".tEvent.ACTIVITY");
+    await clickPreview(".tEvent.ACTIVITY");
     await frame.waitForFunction(()=>!document.querySelector("#skinSheet").hidden&&
       document.querySelector("#sheetTitle").textContent==="编辑事件");
-    await frame.click("#sheetClose");
+    await clickPreview("#sheetClose");
     await frame.waitForFunction(()=>document.querySelector("#skinSheet").hidden);
 
-    await frame.click('[data-action="createDraft"]');
+    await clickPreview('[data-action="createDraft"]');
     await frame.waitForSelector("#timelineCreateDialog[open]");
-    await frame.click('[data-timeline-create-kind="ACTIVITY"]');
+    await clickPreview('[data-timeline-create-kind="ACTIVITY"]');
     await frame.waitForFunction(()=>!document.querySelector("#skinSheet").hidden&&
       !!document.querySelector('#sheetFields [data-field="title"]'));
     assert.equal(await frame.$(".deck-search"),null,
@@ -79,14 +94,13 @@ const studioUrl=process.env.STUDIO_URL||"http://127.0.0.1:8765";
       input.value="Transient checkpoint survives";
       input.dispatchEvent(new Event("change",{bubbles:true}));
     });
-    await frame.click('#sheetActions [data-do="flush"]');
-    await frame.waitForFunction(()=>document.querySelector("#sheetStatus").textContent
-      .includes("修改已暂存"));
+    assert.equal(await frame.$('#sheetActions [data-do="flush"]'),null,
+      "Native-equivalent transient deck has no manual stage button");
     assert.equal(await frame.$eval('#sheetFields [data-field="title"]',input=>input.value),
       "Transient checkpoint survives");
     assert.equal(await frame.$(".deck-search"),null,
       "Checkpointing a transient editor does not turn it into the persisted queue");
-    await frame.click("#sheetClose");
+    await clickPreview("#sheetClose");
     await frame.waitForFunction(()=>document.querySelector("#skinSheet").hidden);
 
     assert.deepEqual(pageErrors,[],"Studio Preview must complete without uncaught page errors");

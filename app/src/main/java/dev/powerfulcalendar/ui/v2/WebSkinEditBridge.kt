@@ -598,7 +598,8 @@ internal class WebSkinEditService(
             items.put(JSONObject().put("draftId",card.draftId)
                 .put("eventSeq",card.eventSeq).put("draftVersion",card.draftVersion)
                 .put("title",card.form.title.take(240))
-                .put("kind",card.form.kind.name).put("status",card.status.name))
+                .put("kind",card.form.kind.name).put("operation",card.operation.name)
+                .put("status",card.status.name))
         }
         val formalItems = org.json.JSONArray()
         formalSearchResults.take(4).forEach { record ->

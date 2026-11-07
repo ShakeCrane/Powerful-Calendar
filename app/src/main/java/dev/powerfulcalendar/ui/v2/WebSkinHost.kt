@@ -112,15 +112,24 @@ internal fun injectWebSkinTouchSlop(html: String, touchSlopDp: Float): String {
 }
 
 /** Presentation-only signal; it carries no Host action, data, or write authority. */
-internal fun decodeWebSkinModalVisibility(raw: String): Boolean? {
+internal data class WebSkinModalPresentation(val open: Boolean, val scrimAlpha: Int)
+
+internal fun decodeWebSkinModalVisibility(raw: String): WebSkinModalPresentation? {
     if (raw.length !in 1..512) return null
     val message = runCatching { JSONObject(raw) }.getOrNull() ?: return null
     if (message.keys().asSequence().toSet() != setOf("version", "type", "payload") ||
         message.optInt("version") != WebSkinBridgeRuntime.VERSION ||
         message.optString("type") != "presentation") return null
     val payload = message.optJSONObject("payload") ?: return null
-    if (payload.keys().asSequence().toSet() != setOf("modalOpen")) return null
-    return payload.opt("modalOpen") as? Boolean
+    val keys = payload.keys().asSequence().toSet()
+    val alpha = if (keys == setOf("modalOpen")) {
+        156 // Backward-compatible default for v1 presentations without a measured scrim.
+    } else {
+        if (keys != setOf("modalOpen", "scrimAlpha")) return null
+        (payload.opt("scrimAlpha") as? Int)?.takeIf { it in 0..255 } ?: return null
+    }
+    val open = payload.opt("modalOpen") as? Boolean ?: return null
+    return WebSkinModalPresentation(open, alpha)
 }
 
 /** Resource MIME selection follows the v3 package path extension, case-insensitively. */
@@ -374,9 +383,10 @@ private class WebSkinModalSystemBarScrim(context: Context) {
     }
     private val overlay = WebSkinSystemBarOverlayView(context)
 
-    fun setVisible(visible: Boolean) {
+    fun setVisible(visible: Boolean, alpha: Int = 156) {
         val decor = activity.window.decorView as? ViewGroup ?: return
         if (visible) {
+            overlay.setScrimAlpha(alpha)
             if (overlay.parent !== decor) {
                 (overlay.parent as? ViewGroup)?.removeView(overlay)
                 decor.addView(overlay, FrameLayout.LayoutParams(
@@ -411,6 +421,11 @@ private class WebSkinSystemBarOverlayView(context: Context) : View(context) {
         isClickable = false
         isFocusable = false
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
+    }
+
+    fun setScrimAlpha(alpha: Int) {
+        scrimPaint.color = Color.argb(alpha.coerceIn(0, 255), 0, 0, 0)
+        invalidate()
     }
 
     override fun onApplyWindowInsets(insets: WindowInsets): WindowInsets {
@@ -530,10 +545,11 @@ private fun SecureWebSkin(
                                 if (!live.get() || session.port !== port ||
                                     PowerCalSkinRegistry.active.web !== bundle) return@post
                                 val raw = message.data.orEmpty()
-                                val modalOpen = decodeWebSkinModalVisibility(raw)
-                                if (modalOpen != null) {
+                                val modalPresentation = decodeWebSkinModalVisibility(raw)
+                                if (modalPresentation != null) {
                                     if (WebSkinCapabilityPolicy.mayRead(bundle)) {
-                                        modalScrim.setVisible(modalOpen)
+                                        modalScrim.setVisible(modalPresentation.open,
+                                            modalPresentation.scrimAlpha)
                                     }
                                     return@post
                                 }

@@ -13,13 +13,17 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class WebSkinBridgeTest {
-    @Test fun modalPresentationSignalCarriesOnlyBooleanUiState() {
-        assertEquals(true, decodeWebSkinModalVisibility(
+    @Test fun modalPresentationSignalCarriesOnlyTypedVisualState() {
+        assertEquals(WebSkinModalPresentation(true, 156), decodeWebSkinModalVisibility(
             """{"version":1,"type":"presentation","payload":{"modalOpen":true}}"""))
-        assertEquals(false, decodeWebSkinModalVisibility(
+        assertEquals(WebSkinModalPresentation(false, 156), decodeWebSkinModalVisibility(
             """{"version":1,"type":"presentation","payload":{"modalOpen":false}}"""))
+        assertEquals(WebSkinModalPresentation(true, 196), decodeWebSkinModalVisibility(
+            """{"version":1,"type":"presentation","payload":{"modalOpen":true,"scrimAlpha":196}}"""))
         assertNull(decodeWebSkinModalVisibility(
             """{"version":1,"type":"presentation","payload":{"modalOpen":true,"action":"delete"}}"""))
+        assertNull(decodeWebSkinModalVisibility(
+            """{"version":1,"type":"presentation","payload":{"modalOpen":true,"scrimAlpha":256}}"""))
         assertNull(decodeWebSkinModalVisibility(
             """{"version":1,"type":"presentation","payload":{"modalOpen":"true"}}"""))
         assertNull(decodeWebSkinModalVisibility(

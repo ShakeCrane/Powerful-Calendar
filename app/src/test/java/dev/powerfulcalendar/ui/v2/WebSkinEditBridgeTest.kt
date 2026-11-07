@@ -895,6 +895,24 @@ class WebSkinEditBridgeTest {
         assertEquals(cards.map { 0L }, cards.map { store.draft(it.draftId)!!.draftVersion })
     }
 
+    @Test fun deckCardProjectionRetainsCoreOperationForPresentation() = runBlocking {
+        store.newDraft(DraftForm(kind = TemporalKind.MEMO, title = "Create proposal"))
+        val formal = commitFormal(DraftForm(kind = TemporalKind.MEMO, title = "Formal target"))
+        store.newDraft(
+            DraftForm(kind = TemporalKind.MEMO, title = "Replace proposal"),
+            eventSeq = formal.eventSeq,
+            operation = DraftOperation.REPLACE,
+            expectedRevision = formal.revision
+        )
+
+        assertEquals("opened", service.execute(WebEditCommand.OpenDeck(request(), null))
+            .getString("status"))
+        val cards = service.snapshot().getJSONObject("deck").getJSONArray("cards")
+        assertEquals(2, cards.length())
+        assertEquals("CREATE", cards.getJSONObject(0).getString("operation"))
+        assertEquals("REPLACE", cards.getJSONObject(1).getString("operation"))
+    }
+
     @Test fun formalSearchSelectionReusesRevisionCheckedReplaceDraft() = runBlocking {
         val zone = ZoneId.of("Asia/Tokyo")
         val start = LocalDateTime.of(2030, 10, 21, 9, 0)

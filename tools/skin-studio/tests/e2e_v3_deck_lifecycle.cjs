@@ -75,24 +75,28 @@ async function waitForResult(frame,status){
     await click(frame,'[data-action="openDeck"]');
     await frame.waitForFunction(()=>window.__pcE2EState?.editing?.deck?.currentId===7301,
       {timeout:10000});
-    assert.equal(await frame.$eval("#sheetSubtitle",node=>node.textContent),"2 张 · 已暂存");
+    assert.equal(await frame.$eval("#sheetSubtitle",node=>node.textContent),"2 张");
+    await frame.click(".deck-summary");
+    await frame.waitForSelector('#sheetFields [data-field="title"]');
 
     await frame.$eval('#sheetFields [data-field="title"]',input=>{
       input.value="暂存后可恢复的标题";
       input.dispatchEvent(new Event("change",{bubbles:true}));
     });
     await waitForResult(frame,"edited");
-    await click(frame,'#sheetActions [data-do="flush"]');
-    await waitForResult(frame,"flushed");
+    assert.equal(await frame.$('#sheetActions [data-do="flush"]'),null,
+      "Native-equivalent deck does not expose a manual stage action");
+    await click(frame,"#sheetClose");
+    await waitForResult(frame,"closed");
     let deck=await frame.evaluate(()=>window.__pcE2EState.editing.deck);
     assert.equal(deck.form.title,"暂存后可恢复的标题");
     assert.equal(deck.version,1);
-    await click(frame,'#sheetActions [data-do="close"]');
-    await waitForResult(frame,"closed");
     await click(frame,'[data-action="openDeck"]');
     await frame.waitForFunction(()=>window.__pcE2EState?.editing?.deck?.currentId===7301&&
       window.__pcE2EState.editing.deck.form.title==="暂存后可恢复的标题",{timeout:10000});
-    console.log("Preview Mock deck flush → close → reopen retains the staged form and version");
+    await frame.click(".deck-summary");
+    await frame.waitForSelector('#sheetFields [data-field="title"]');
+    console.log("Preview Mock close stages → reopen retains the edited form and version");
 
     await click(frame,'#sheetActions [data-do="discard"]');
     await click(frame,'#sheetActions [data-do="discard"]');

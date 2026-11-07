@@ -4,7 +4,16 @@
 const $=id=>document.getElementById(id),sheet=$("skinSheet");
 const status=$("sheetStatus"),fields=$("sheetFields"),actions=$("sheetActions");
 let state={},mode="",identity="",fingerprint="",busy=false,pendingOperations=0,saveQueued=false,seq=0,queue=Promise.resolve();
+let expandedDeckId="",expandedDeck=false,expandedDeckTarget="";
+let activeDeckGesture=null,suppressedDeckClick=null;
 const pending=new Map();
+sheet.setAttribute("aria-busy","false");
+function syncBusyUi(){
+  busy=pendingOperations>0;
+  sheet.setAttribute("aria-busy",String(busy));
+  fields.inert=busy;
+  actions.inert=busy;
+}
 const el=(tag,content,cls)=>{
   const node=document.createElement(tag);
   if(content!=null)node.textContent=String(content);
@@ -13,7 +22,7 @@ const el=(tag,content,cls)=>{
 };
 function resetTransport(){
   for(const fn of pending.values())fn({status:"unavailable"});
-  pending.clear();queue=Promise.resolve();busy=false;
+  pending.clear();queue=Promise.resolve();pendingOperations=0;syncBusyUi();
 }
 function send(name,args){
   return new Promise(resolve=>{
@@ -26,18 +35,27 @@ function send(name,args){
 }
 function perform(name,args={}){
   pendingOperations++;
-  busy=true;
+  syncBusyUi();
   const job=queue.catch(()=>({status:"failed"})).then(()=>send(name,args));
   queue=job.then(reply=>{
+    const opensTargetDraft=(name==="deck.proposeReplace"&&reply.status==="opened")||
+      (name==="timeline.move"&&reply.status==="staged");
+    if(opensTargetDraft)
+      expandedDeckTarget=/^\d+$/.test(String(reply.detail||""))?String(reply.detail):"";
     showReply(reply);
+    render();
     return reply;
   }).finally(()=>{
     pendingOperations=Math.max(0,pendingOperations-1);
-    busy=pendingOperations>0;
+    syncBusyUi();
   });
   return queue;
 }
 function showReply(reply){
+    if(["opened","searched","moved","selected"].includes(reply.status)){
+      status.textContent="";
+      return;
+    }
     const labels={saved:"事件已保存",committed:"草稿已发布",
       committed_preview_only:"预览模拟发布流程已完成；真实日历数据未更改",
       discarded:"已丢弃，可以撤销",
@@ -129,12 +147,60 @@ function renderForm(form,occurrenceOnly=false){
 function button(title,action,cls=""){
   const b=el("button",title,cls);b.type="button";b.dataset.do=action;return b;
 }
+function deckKindLabel(kind){return ({ACTIVITY:"活动",ALARM:"闹钟",DEADLINE:"截止",MEMO:"备忘"})[kind]||"事件"}
+function renderDeckHeader(deck,form){
+  const card=(deck.cards||[]).find(item=>String(item.draftId)===String(deck.currentId));
+  const header=el("div",null,"deck-card-header");
+  const sequence=Number(card?.eventSeq);
+  header.append(el("span",Number.isSafeInteger(sequence)&&sequence>0?
+    "#"+String(sequence).padStart(4,"0"):(deck.transient?"新建":"草稿"),"deck-card-sequence"));
+  header.append(el("span",deckKindLabel(form.kind),"deck-card-kind"));
+  const operation=String(card?.operationLabel||({CREATE:"新建",REPLACE:"修改",CONVERT:"类型转换",DELETE:"删除"}[card?.operation])||
+    (deck.transient?"新建":"待处理"));
+  header.append(el("span",operation,"deck-card-operation"));
+  const toggle=button(expandedDeck?"⌃":"⌄",expandedDeck?"collapseDeck":"expandDeck","deck-expand-toggle");
+  toggle.setAttribute("aria-label",expandedDeck?"收起详细编辑":"展开完整编辑");
+  toggle.setAttribute("title",toggle.getAttribute("aria-label"));
+  header.append(toggle);
+  return header;
+}
+function renderDeckSummary(form,deck){
+  const summary=button("","expandDeck","deck-summary");
+  summary.setAttribute("aria-label","轻点卡片，展开完整编辑");
+  summary.append(el("strong",form.title?.trim()||"给这段时间起个名字","deck-summary-title"));
+  const time=el("span",null,"deck-summary-time "+String(form.kind||"").toLowerCase());
+  const timeText=form.kind==="ALARM"?form.startText:
+    form.kind==="ACTIVITY"?[form.startText,form.endText].filter(Boolean).join("\n"):
+    form.kind==="DEADLINE"?[form.endText,"截止"].filter(Boolean).join(" · "):
+    form.startText||"无日期备忘";
+  time.textContent=timeText||"时间待定";
+  summary.append(time);
+  if(form.location?.trim())summary.append(el("span",form.location,"deck-summary-location"));
+  if(form.notes?.trim())summary.append(el("span",form.notes,"deck-summary-notes"));
+  summary.append(el("span",deck.aiLocked===true?"卡组只读 · 可浏览详情":"轻点卡片，展开完整编辑","deck-summary-hint"));
+  return summary;
+}
 function render(){
   const editing=state.editing||{},editor=editing.editor||{},deck=editing.deck||{};
   const next=editor.open?"event":deck.open?"deck":"";
   const id=next==="event"?"event:"+editor.sessionId:
     next==="deck"?"deck:"+deck.currentId:"";
-  if(!next){mode="";identity="";fingerprint="";$('skinSheet').removeAttribute('data-mode');visible(false);return}
+  if(next==="deck"){
+    const expandedId=String(deck.currentId??"none")+":"+String(deck.transient===true);
+    if(expandedId!==expandedDeckId){expandedDeckId=expandedId;expandedDeck=deck.transient===true}
+    if(expandedDeckTarget&&String(deck.currentId)===expandedDeckTarget){
+      expandedDeck=true;expandedDeckTarget="";
+    }
+  }else{expandedDeckId="";expandedDeck=false}
+  if(!next){
+    const panel=sheet.querySelector(".sheet-panel");
+    if(panel)panel.append(actions);
+    sheet.querySelector(".sheet-head")?.append($("sheetSave"));
+    sheet.removeAttribute("data-mode");sheet.setAttribute("aria-label","编辑");
+    fields.classList.remove("has-deck-search");
+    const hint=$("deckGestureHint");if(hint)hint.hidden=true;
+    mode="";identity="";fingerprint="";visible(false);return
+  }
   visible(true);
   const form=next==="event"?editor.form:deck.form;
   const deckView=next==="deck"?{
@@ -148,7 +214,7 @@ function render(){
     position:deck.position,count:deck.cardCount,previous:deck.canGoPrevious,next:deck.canGoNext,
     truncated:deck.truncated,transient:deck.transient===true
   }:null;
-  const current=JSON.stringify({form,deck:deckView,scope:editor.recurrenceScope,
+  const current=JSON.stringify({form,deck:deckView,deckExpanded:expandedDeck,scope:editor.recurrenceScope,
     requiresScope:editor.requiresRecurrenceScope,dirty:editor.dirty,
     awaitingConfirmation:editor.awaitingConfirmation});
   const focused=!!document.activeElement?.matches?.(
@@ -157,14 +223,22 @@ function render(){
   mode=next;identity=id;$('skinSheet').dataset.mode=mode;
   if(!changed)return;
   fingerprint=current;
+  fields.classList.toggle("has-deck-search",mode==="deck"&&!!(deck.searchQuery||"").trim());
+  const panel=sheet.querySelector(".sheet-panel");
+  if(panel)panel.append(actions);
+  sheet.querySelector(".sheet-head")?.append($("sheetSave"));
   fields.replaceChildren();actions.replaceChildren();
-  $("sheetTitle").textContent=mode==="event"?"编辑事件":"待处理草稿";
+  sheet.setAttribute("aria-label",mode==="event"?"事件编辑器":"待处理草稿卡组");
+  $("sheetClose").textContent=mode==="deck"?"×":"‹";
+  $("sheetClose").setAttribute("aria-label",mode==="deck"?"保存并退出待处理":"保存检查点并退出");
+  $("sheetTitle").textContent=mode==="event"?"编辑事件":deck.transient===true?"新建事件":"待处理";
   const deckCount=Number.isFinite(Number(deck.cardCount))?Number(deck.cardCount):(deck.cards||[]).length;
   $("sheetSubtitle").textContent=mode==="event"?
     "#"+(editor.eventSeq||"?")+" · "+(form?.kind||""):
+    deck.transient===true?"只在修改后暂存":
     deck.completion?"本次完成 · 发布 "+Number(deck.completion.published||0)+
       " · 丢弃 "+Number(deck.completion.discarded||0):
-      String(deckCount)+" 张 · "+(deck.dirty?"尚未暂存":"已暂存");
+      String(deckCount)+" 张";
   $("sheetSave").textContent=mode==="event"?"保存":"发布";
   const requiresScope=mode==="event"&&editor.requiresRecurrenceScope===true;
   const scope=editor.recurrenceScope||"";
@@ -206,8 +280,10 @@ function render(){
       const searchLabel=el("label","搜索草稿和正式事件","sheet-label");
       const input=el("input");input.type="search";input.maxLength=120;
       input.autocomplete="off";input.value=deck.searchQuery||"";
+      input.placeholder="查找草稿标题或事件序号";
       input.setAttribute("aria-label","搜索草稿标题或正式事件标题、序号");
       const submit=el("button","查找","sheet-secondary");submit.type="submit";
+      submit.setAttribute("aria-label","查找草稿或正式事件");
       search.append(searchLabel,input,submit);
       search.addEventListener("submit",event=>{
         event.preventDefault();
@@ -217,6 +293,7 @@ function render(){
       fields.append(search);
 
       const formal=deck.formalMatches||[];
+      let formalResults=null;
       if((deck.searchQuery||"").trim()){
         if(!deck.cards?.length&&!formal.length)
           fields.append(el("p","没有匹配的草稿或正式事件","sheet-note"));
@@ -232,24 +309,31 @@ function render(){
               !Number.isSafeInteger(revision)||revision<=0;
             results.append(item);
           }
-          fields.append(results);
+          formalResults=results;
         }
       }
 
       const nav=el("nav",null,"sheet-cards");
       nav.setAttribute("aria-label","待处理草稿；选择卡片继续编辑");
       for(const card of deck.cards||[]){
-        const b=button("#"+String(card.eventSeq).padStart(4,"0")+" · "+
-          (card.title||"未命名草稿"),"select","sheet-card");
+        const b=button("","select","sheet-card deck-search-result");
+        b.append(el("span","#"+String(card.eventSeq).padStart(4,"0"),"deck-search-sequence"));
+        b.append(el("span",card.title||"未命名草稿","deck-search-title"));
+        b.append(el("span","草稿","deck-search-type"));
         b.dataset.draftId=card.draftId;
         if(card.draftId===deck.currentId)b.classList.add("selected");
         nav.append(b);
       }
-      if(deck.cards?.length||!(deck.searchQuery||"").trim())fields.append(nav);
+      if(deck.cards?.length&&(deck.searchQuery||"").trim())fields.append(nav);
+      if(formalResults)fields.append(formalResults);
       if(deck.searchTruncated)fields.append(el("p","仅显示前 4 条匹配草稿。","sheet-note"));
       else if(deck.truncated)fields.append(el("p","草稿列表仅显示前 80 张；使用搜索查找其他草稿。","sheet-note"));
     }
-    if(form&&!deck.conflict&&!deck.restore)renderForm(form);
+    if(form&&!deck.conflict&&!deck.restore){
+      fields.append(renderDeckHeader(deck,form));
+      if(!deck.transient&&!expandedDeck)fields.append(renderDeckSummary(form,deck));
+      else renderForm(form);
+    }
     else if(!transient&&deck.currentId==null&&!deck.conflict&&!deck.restore){
       const completion=deck.completion;
       const status=el("section",null,"deck-review-snapshot deck-completion");
@@ -264,9 +348,8 @@ function render(){
     }else if(!transient&&!deck.cards?.length&&!(deck.formalMatches||[]).length)
       fields.append(el("p","当前没有可编辑的待处理草稿。","sheet-note"));
 
-    if(deck.retiredLoaded===true&&!deck.conflict&&!deck.restore){
+    if(deck.retiredLoaded===true&&Number(deck.retiredTotal)>0&&!deck.conflict&&!deck.restore){
       fields.append(el("h3","已删除事件","sheet-label"));
-      if(!deck.retiredTotal)fields.append(el("p","没有可恢复的已删除事件。","sheet-note"));
       const retired=el("nav",null,"deck-retired-results");
       retired.setAttribute("aria-label","已删除事件；选择一项生成恢复草稿");
       for(const item of deck.retiredResults||[]){
@@ -337,19 +420,45 @@ function render(){
       paging.setAttribute("aria-label","草稿导航");
       const previous=button("上一张","jump","sheet-secondary");
       previous.dataset.steps="-1";previous.disabled=deck.canGoPrevious!==true;
-      const count=el("span",String(deck.position||0)+" / "+String(deck.cardCount||0));
+      previous.setAttribute("aria-label","上一张草稿");
+      const count=el("span",String(deck.position||0)+" / "+String(deck.cardCount||0)+
+        " · "+(deck.dirty?"未暂存":"已暂存"));
       const nextButton=button("下一张","jump","sheet-secondary");
       nextButton.dataset.steps="1";nextButton.disabled=deck.canGoNext!==true;
+      nextButton.setAttribute("aria-label","下一张草稿");
       paging.append(previous,count,nextButton);actions.append(paging);
     }
     if(!deck.conflict&&!deck.restore){
       if(deck.currentId!=null){
-        actions.append(button("暂存","flush","sheet-secondary"));
         actions.append(button("丢弃草稿","discard","sheet-danger"));
       }
       if(deck.lastDiscardId!=null)actions.append(button("撤销丢弃","undo","sheet-secondary"));
       actions.append(button("完成并退出","close","sheet-secondary"));
     }else actions.append(button("关闭","close","sheet-secondary"));
+  }
+  if(mode==="deck"){
+    const search=fields.querySelector(".deck-search");
+    const searchMode=!!(deck.searchQuery||"").trim();
+    const searchResults=searchMode?
+      Array.from(fields.querySelectorAll(".deck-formal-results,.sheet-cards")):[];
+    const content=el("div",null,"deck-card-content "+(expandedDeck?"is-expanded":"is-collapsed"));
+    for(const child of Array.from(fields.children))
+      if(child!==search&&!searchResults.includes(child))content.append(child);
+    const surface=el("div",null,"deck-card-surface");
+    surface.dataset.stackDepth=String(Math.max(0,Math.min(2,deckCount-1)));
+    surface.dataset.expanded=String(expandedDeck||deck.transient===true);
+    surface.dataset.aiLocked=String(deck.aiLocked===true);
+    if(deck.transient!==true&&!searchMode)
+      content.querySelectorAll(".sheet-cards").forEach(node=>node.hidden=true);
+    surface.append(content);
+    actions.append($("sheetSave"));
+    surface.append(actions);
+    const stage=el("div",null,"deck-stage");stage.append(surface);
+    fields.replaceChildren();
+    if(search)fields.append(search);
+    searchResults.forEach(result=>fields.append(result));
+    fields.append(stage);
+    const hint=$("deckGestureHint");if(hint)hint.hidden=deck.transient===true;
   }
 }
 function readonlySnapshot(title,form){
@@ -436,11 +545,113 @@ async function close(){
     await perform("editor.close",{sessionId:e.editor.sessionId});
   else if(mode==="deck")await perform("deck.close");
 }
+$("sheetShade").addEventListener("pointerdown",beginDeckGesture,true);
+fields.addEventListener("pointerdown",beginDeckGesture,true);
+document.addEventListener("pointerdown",event=>{
+  if(activeDeckGesture&&event.pointerId!==activeDeckGesture.pointerId)
+    activeDeckGesture.blocked=true;
+},true);
+document.addEventListener("pointermove",moveDeckGesture,{capture:true,passive:false});
+document.addEventListener("pointerup",event=>finishDeckGesture(event,false),true);
+document.addEventListener("pointercancel",event=>finishDeckGesture(event,true),true);
+document.addEventListener("click",event=>{
+  const pendingClick=suppressedDeckClick;
+  if(!pendingClick||performance.now()>pendingClick.expires)return;
+  const samePointer=Number.isInteger(event.pointerId)&&event.pointerId===pendingClick.pointerId;
+  const fallback=event.detail>0&&performance.now()-pendingClick.created<100&&
+    pendingClick.root?.contains(event.target);
+  if(!samePointer&&!fallback)return;
+  suppressedDeckClick=null;
+  event.preventDefault();event.stopImmediatePropagation();
+},true);
+function beginDeckGesture(event){
+  if(mode!=="deck"||event.button!==0)return;
+  if(activeDeckGesture){
+    if(event.pointerId!==activeDeckGesture.pointerId)activeDeckGesture.blocked=true;
+    return;
+  }
+  const surface=event.target.closest?.(".deck-card-surface");
+  const shade=event.target.closest?.("#sheetShade");
+  if(!surface&&!shade)return;
+  if(surface&&event.target.closest?.(
+    'input,textarea,select,[contenteditable="true"],a,[data-no-deck-swipe],button:not(.deck-summary)'))return;
+  const root=surface||shade;
+  activeDeckGesture={
+    type:surface?"card":"outside",pointerId:event.pointerId,root,surface,
+    startX:event.clientX,startY:event.clientY,x:event.clientX,y:event.clientY,
+    dx:0,dy:0,claimed:false,blocked:false,
+    samples:[{x:event.clientX,time:event.timeStamp}]
+  };
+}
+function moveDeckGesture(event){
+  const gesture=activeDeckGesture;
+  if(!gesture||event.pointerId!==gesture.pointerId)return;
+  if(!event.isPrimary){gesture.blocked=true;resetDeckGestureVisual(gesture);return}
+  gesture.x=event.clientX;gesture.y=event.clientY;
+  gesture.dx=gesture.x-gesture.startX;gesture.dy=gesture.y-gesture.startY;
+  gesture.samples.push({x:gesture.x,time:event.timeStamp});
+  while(gesture.samples.length>2&&event.timeStamp-gesture.samples[0].time>120)
+    gesture.samples.shift();
+  if(gesture.blocked)return;
+  const horizontal=Math.abs(gesture.dx),vertical=Math.abs(gesture.dy);
+  if(!gesture.claimed&&vertical>8&&vertical>horizontal){
+    gesture.blocked=true;return;
+  }
+  if(!gesture.claimed&&horizontal>11.2&&horizontal>vertical*1.4){
+    gesture.claimed=true;
+    try{gesture.root.setPointerCapture(event.pointerId)}catch{}
+  }
+  if(!gesture.claimed)return;
+  event.preventDefault();
+  if(gesture.surface){
+    gesture.surface.classList.add("deck-dragging");
+    gesture.surface.style.setProperty("--deck-drag-x",`${Math.max(-24,Math.min(24,gesture.dx*.14))}px`);
+  }
+}
+function resetDeckGestureVisual(gesture){
+  if(!gesture?.surface)return;
+  gesture.surface.classList.remove("deck-dragging");
+  gesture.surface.style.setProperty("--deck-drag-x","0px");
+}
+function finishDeckGesture(event,cancelled){
+  const gesture=activeDeckGesture;
+  if(!gesture||event.pointerId!==gesture.pointerId)return;
+  activeDeckGesture=null;
+  resetDeckGestureVisual(gesture);
+  if(cancelled||gesture.blocked||!gesture.claimed)return;
+  const horizontal=Math.abs(gesture.dx),vertical=Math.abs(gesture.dy);
+  const minimum=gesture.type==="card"?72:60;
+  if(horizontal<minimum||horizontal<=vertical*1.25)return;
+  const direction=gesture.dx<0?1:-1;
+  if(gesture.type==="card"){
+    const control=document.querySelector(`.sheet-deck-navigation [data-steps="${direction}"]`);
+    if(!control||control.disabled)return;
+    suppressedDeckClick={pointerId:event.pointerId,root:gesture.surface,
+      created:performance.now(),expires:performance.now()+500};
+    void perform("deck.jump",{steps:direction});
+    return;
+  }
+  const samples=gesture.samples;
+  let velocityX=0;
+  if(samples.length>=2){
+    const first=samples[0],last=samples[samples.length-1];
+    const elapsed=last.time-first.time;
+    if(elapsed>0)velocityX=((last.x-first.x)/elapsed)*1000*(window.devicePixelRatio||1);
+  }
+  const fling=Math.abs(velocityX)>900;
+  const steps=direction*(fling?Math.max(1,Math.floor(horizontal/110)):1);
+  suppressedDeckClick={pointerId:event.pointerId,root:gesture.root,
+    created:performance.now(),expires:performance.now()+500};
+  void perform("deck.jump",{steps:Math.max(-8,Math.min(8,steps))});
+}
 $("sheetClose").addEventListener("click",()=>void close());
 $("sheetShade").addEventListener("click",()=>void close());
 fields.addEventListener("click",event=>{
   const b=event.target.closest("[data-do]");if(!b||busy)return;
-  if(b.dataset.do==="select"&&b.dataset.draftId)
+  if(b.dataset.do==="expandDeck"||b.dataset.do==="collapseDeck"){
+    expandedDeck=b.dataset.do==="expandDeck";
+    fingerprint="";render();
+  }else if(b.dataset.do==="select"&&b.dataset.draftId)
     void perform("deck.select",{draftId:Number(b.dataset.draftId)});
   else if(b.dataset.do==="retiredPage")
     void perform("deck.retired",{offset:Number(b.dataset.offset)});

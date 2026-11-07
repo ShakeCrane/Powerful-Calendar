@@ -838,14 +838,25 @@ window.addEventListener("message",e=>{
 let lastModalVisibility=null;
 function publishModalVisibility(){
   if(!port)return;
-  const modalOpen=document.querySelector('dialog[open]')!==null;
-  if(lastModalVisibility===modalOpen)return;
-  lastModalVisibility=modalOpen;
-  try{port.postMessage(JSON.stringify({version:1,type:"presentation",payload:{modalOpen}}))}catch{}
+  const sheet=document.querySelector("#skinSheet:not([hidden])");
+  const dialogs=[...document.querySelectorAll("dialog[open]")];
+  const modalOpen=!!sheet||dialogs.length>0;
+  const scrim=sheet?.querySelector(".sheet-shade")||dialogs[dialogs.length-1]||null;
+  const background=scrim?(sheet?getComputedStyle(scrim).backgroundColor:
+    getComputedStyle(scrim,"::backdrop").backgroundColor):"";
+  const rgba=background.match(/^rgba\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*,\s*([\d.]+)\s*\)$/i);
+  const modernAlpha=background.match(/^rgb\([^)]*\/\s*([\d.]+)\s*\)$/i);
+  const opacity=Number((rgba||modernAlpha)?.[1]??(modalOpen?1:0));
+  const elementOpacity=scrim?Number.parseFloat(getComputedStyle(scrim).opacity||"1"):1;
+  const scrimAlpha=modalOpen?Math.round(Math.min(1,Math.max(0,opacity*elementOpacity))*255):156;
+  const fingerprint=`${modalOpen}:${scrimAlpha}`;
+  if(lastModalVisibility===fingerprint)return;
+  lastModalVisibility=fingerprint;
+  try{port.postMessage(JSON.stringify({version:1,type:"presentation",payload:{modalOpen,scrimAlpha}}))}catch{}
 }
 const modalVisibilityObserver=new MutationObserver(publishModalVisibility);
 modalVisibilityObserver.observe(document.documentElement,{
-  subtree:true,childList:true,attributes:true,attributeFilter:["open"]
+  subtree:true,childList:true,attributes:true,attributeFilter:["open","hidden"]
 });
 function receive(raw){
   let parsed;
