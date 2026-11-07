@@ -32,6 +32,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.core.view.WindowInsetsCompat
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -42,6 +43,7 @@ import dev.powerfulcalendar.core.PowerStore
 import dev.powerfulcalendar.core.Recurrence
 import dev.powerfulcalendar.core.RecurrenceFreq
 import dev.powerfulcalendar.core.TemporalKind
+import dev.powerfulcalendar.core.TimelineLayout
 import dev.powerfulcalendar.core.TimelineCoordinate
 import dev.powerfulcalendar.core.api.v1.CalendarWindowQueryV1
 import dev.powerfulcalendar.core.api.v1.PowerCalCoreFeatureApiV1
@@ -322,6 +324,59 @@ class TimelineDragWebViewInstrumentedTest {
             .put("endScreenPx", JSONArray(listOf(point.x, endY)))
             .put("cssDeltaY", deltaCssY).put("holdMillis", holdMillis)
             .put("eventSeq", probe.getLong("eventSeq"))
+    }
+
+    private fun webWingScroll(web: WebView, side: String): JSONObject = evaluateObject(web, """
+        (()=>{
+          const wing=document.getElementById(${JSONObject.quote(if (side == "LEFT") "timelineLeft" else "timelineRight")});
+          const rect=wing.getBoundingClientRect();
+          return {left:rect.left,top:rect.top,width:rect.width,height:rect.height,
+            scrollLeft:wing.scrollLeft,maxScroll:wing.scrollWidth-wing.clientWidth,
+            cssWidth:innerWidth,cssHeight:innerHeight};
+        })()
+    """.trimIndent())
+
+    private fun nativeScrollRange(tag: String): Pair<Float, Float> {
+        val axis = compose.onNodeWithTag(tag).fetchSemanticsNode()
+            .config[androidx.compose.ui.semantics.SemanticsProperties.HorizontalScrollAxisRange]
+        return axis.value() to axis.maxValue()
+    }
+
+    private fun swipeWebWing(web: WebView, side: String, direction: Int) {
+        require(direction == -1 || direction == 1)
+        val before = webWingScroll(web, side)
+        assertTrue("$side Web wing has no horizontal overflow: $before", before.getDouble("maxScroll") > 2.0)
+        val cssX = before.getDouble("left") + before.getDouble("width") * if (direction < 0) 0.78 else 0.22
+        val cssY = before.getDouble("top") + before.getDouble("height") * 0.80
+        val location = IntArray(2)
+        val dimensions = AtomicReference<Pair<Int, Int>>()
+        compose.runOnUiThread { web.getLocationOnScreen(location); dimensions.set(web.width to web.height) }
+        val (widthPx, heightPx) = requireNotNull(dimensions.get())
+        val scaleX = widthPx / before.getDouble("cssWidth")
+        val scaleY = heightPx / before.getDouble("cssHeight")
+        assertEquals("Web CSS-to-screen scales match for the physical wing swipe", scaleX, scaleY, 0.02)
+        val startX = location[0] + (cssX * scaleX).toFloat()
+        val startY = location[1] + (cssY * scaleY).toFloat()
+        val endX = startX + (before.getDouble("width") * 0.38 * direction * scaleX).toFloat()
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val downTime = SystemClock.uptimeMillis()
+        fun send(action: Int, eventTime: Long, x: Float) {
+            val event = MotionEvent.obtain(downTime, eventTime, action, x, startY, 0)
+            try {
+                event.source = InputDevice.SOURCE_TOUCHSCREEN
+                instrumentation.sendPointerSync(event)
+            } finally {
+                event.recycle()
+            }
+        }
+        send(MotionEvent.ACTION_DOWN, downTime, startX)
+        repeat(8) { index ->
+            SystemClock.sleep(70)
+            val fraction = (index + 1) / 8f
+            send(MotionEvent.ACTION_MOVE, SystemClock.uptimeMillis(), startX + (endX - startX) * fraction)
+        }
+        SystemClock.sleep(70)
+        send(MotionEvent.ACTION_UP, SystemClock.uptimeMillis(), endX)
     }
 
     private fun saveWindowScreenshot(file: File) {
@@ -851,9 +906,47 @@ class TimelineDragWebViewInstrumentedTest {
         try {
             val zone = ZoneId.systemDefault()
             val sourceDate = LocalDate.now(zone)
+            val fixtureSuffix = sourceDate.toString().replace("-", "")
+            val deadlineTitle = "N095_RAW_DATE_DEADLINE_$fixtureSuffix"
+            val geometryActivityTitle = "N095_RAW_DATE_ACTIVITY_$fixtureSuffix"
+            val wingStart = sourceDate.atTime(9, 0).atZone(zone).toInstant().toEpochMilli()
+            val wingEnd = sourceDate.atTime(10, 0).atZone(zone).toInstant().toEpochMilli()
+            val wingForms = buildList {
+                for (lane in 0..3) {
+                    add("native095-left-$lane" to DraftForm(
+                        kind = TemporalKind.ALARM,
+                        title = "WING_LEFT_$lane",
+                        startText = DraftForm.formatInstant(wingStart, zone),
+                        reminderMinutes = -1,
+                        zoneId = zone.id
+                    ))
+                }
+                for (lane in 0..3) {
+                    add("native095-right-$lane" to DraftForm(
+                        kind = TemporalKind.ACTIVITY,
+                        title = "WING_RIGHT_$lane",
+                        startText = DraftForm.formatInstant(wingStart, zone),
+                        endText = DraftForm.formatInstant(wingEnd, zone),
+                        reminderMinutes = -1,
+                        zoneId = zone.id
+                    ))
+                }
+            }
+            val wingSequences = mutableListOf<Long>()
+            wingForms.forEach { (requestId, wingForm) ->
+                val nativeWing = nativeStore.createFormalEvent(wingForm, requestId)
+                    as PowerStore.CommitOutcome.Committed
+                val clearWing = clearStore.createFormalEvent(wingForm, requestId)
+                    as PowerStore.CommitOutcome.Committed
+                assertEquals("Paired wing fixtures must preserve Core event sequence",
+                    nativeWing.eventSeq, clearWing.eventSeq)
+                wingSequences += nativeWing.eventSeq
+            }
+            assertEquals("Native and Web use the same ordered eight-event dual-wing fixture",
+                (1L..8L).toList(), wingSequences)
             val form = DraftForm(
                 kind = TemporalKind.DEADLINE,
-                title = "DATE_DEADLINE_DRAG_PARITY",
+                title = deadlineTitle,
                 endText = sourceDate.toString(),
                 zoneId = zone.id
             )
@@ -868,7 +961,7 @@ class TimelineDragWebViewInstrumentedTest {
             val activityStart = sourceDate.atTime(9, 15).atZone(zone).toInstant().toEpochMilli()
             val activityForm = DraftForm(
                 kind = TemporalKind.ACTIVITY,
-                title = "DATE_DEADLINE_GEOMETRY_ACTIVITY",
+                title = geometryActivityTitle,
                 startText = DraftForm.formatInstant(activityStart, zone),
                 endText = DraftForm.formatInstant(activityStart + 3_600_000L, zone),
                 zoneId = zone.id
@@ -881,6 +974,20 @@ class TimelineDragWebViewInstrumentedTest {
             assertEquals(activitySeq, clearActivityCreated.eventSeq)
             val nativeActivityOriginal = requireNotNull(nativeStore.get(activitySeq))
             val clearActivityOriginal = requireNotNull(clearStore.get(activitySeq))
+            assertEquals("The date Deadline follows the same eight wing records as the raw APK fixture",
+                9L, eventSeq)
+            assertEquals("The geometry Activity follows the Deadline in the shared fixture", 10L, activitySeq)
+            val nativeLayout = TimelineLayout.layout(nativeStore.all()).items
+            val nativeDeadlineItem = nativeLayout.single { it.record.eventSeq == eventSeq }
+            assertEquals("Date Deadline remains in the first left lane under the frozen wing fixture",
+                "LEFT", nativeDeadlineItem.side.name)
+            assertEquals(0, nativeDeadlineItem.lane)
+            assertEquals((0..3).toSet(), nativeLayout.filter {
+                it.record.title.startsWith("WING_LEFT_")
+            }.map { it.lane }.toSet())
+            assertEquals((0..3).toSet(), nativeLayout.filter {
+                it.record.title.startsWith("WING_RIGHT_")
+            }.map { it.lane }.toSet())
 
             nativeContext.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
                 .edit().putBoolean("system-calendar-import-asked", true).commit()
@@ -905,11 +1012,30 @@ class TimelineDragWebViewInstrumentedTest {
                 hasContentDescription(form.title, substring = true) and hasClickAction()
             ).onFirst()
             nativeDeadline.assertExists()
+            val nativeLeftScrollInitial = nativeScrollRange("timeline-left-lanes")
+            var nativeLeftScroll = nativeLeftScrollInitial
+            var nativeLeftSwipes = 0
+            while (nativeLeftScroll.first < nativeLeftScroll.second - 1f && nativeLeftSwipes < 5) {
+                compose.onNodeWithTag("timeline-left-lanes").performTouchInput { swipeLeft() }
+                compose.waitForIdle()
+                nativeLeftScroll = nativeScrollRange("timeline-left-lanes")
+                nativeLeftSwipes++
+            }
+            assertTrue("Native left wing reveals the Deadline's inner lane by real horizontal swipes; " +
+                "initial=$nativeLeftScrollInitial final=$nativeLeftScroll swipes=$nativeLeftSwipes",
+                nativeLeftScroll.first >= nativeLeftScroll.second - 1f)
+            val nativeDeadlineBounds = nativeDeadline.fetchSemanticsNode().boundsInRoot
+            assertTrue("Native date Deadline target is visible after revealing its matching lane: $nativeDeadlineBounds",
+                nativeDeadlineBounds.width > 0f && nativeDeadlineBounds.height > 0f)
             val nativeHeight = compose.onNodeWithTag("timeline-viewport")
                 .fetchSemanticsNode().boundsInRoot.height
             assertTrue("Native timeline viewport must have a measurable height", nativeHeight > 0f)
             val nativeTimelineScreenshot = File(storage.cacheDir, "native095-native-date-deadline.png")
             saveWindowScreenshot(nativeTimelineScreenshot)
+            val nativeScreenshotUri = publishScreenshotForQa(nativeTimelineScreenshot)
+            println("NATIVE095_DENSE_DATE_DEADLINE nativeScreenshot=$nativeScreenshotUri " +
+                "scrollInitial=$nativeLeftScrollInitial scrollFinal=$nativeLeftScroll " +
+                "deadlineBounds=$nativeDeadlineBounds layout=$nativeDeadlineItem")
             nativeDeadline.performTouchInput {
                 down(center)
                 advanceEventTime(700)
@@ -953,6 +1079,19 @@ class TimelineDragWebViewInstrumentedTest {
             awaitJs(view, """!!document.querySelector(".dateDeadline[data-event-seq='$eventSeq']")""")
             awaitJs(view, """!!document.querySelector(".tEvent.DEADLINE[data-event-seq='$eventSeq']")""")
             awaitJs(view, """!!document.querySelector(".tEvent.ACTIVITY[data-event-seq='$activitySeq'] .tEventVisual")""")
+            val webLeftScrollInitial = webWingScroll(view, "LEFT")
+            var webLeftScroll = webLeftScrollInitial
+            var webLeftSwipes = 0
+            while (webLeftScroll.getDouble("scrollLeft") < webLeftScroll.getDouble("maxScroll") - 2.0 &&
+                webLeftSwipes < 5) {
+                swipeWebWing(view, "LEFT", -1)
+                compose.waitForIdle()
+                webLeftScroll = webWingScroll(view, "LEFT")
+                webLeftSwipes++
+            }
+            assertTrue("Web left wing reveals the matching Deadline lane by real horizontal swipes; " +
+                "initial=$webLeftScrollInitial final=$webLeftScroll swipes=$webLeftSwipes",
+                webLeftScroll.getDouble("scrollLeft") >= webLeftScroll.getDouble("maxScroll") - 2.0)
             val timeline = hostState().getJSONObject("timeline")
             val visibleStart = timeline.getLong("visibleStartMillis")
             val visibleEnd = timeline.getLong("visibleEndMillis")
@@ -973,6 +1112,8 @@ class TimelineDragWebViewInstrumentedTest {
                     deadlineStartMillis:Number(deadline.dataset.startMillis),
                     deadlineLineY:deadlineLine.top+deadlineLine.height/2-surfaceRect.top,
                     deadlineAria:deadline.getAttribute('aria-label')||'',
+                    deadlineRect:{left:deadline.getBoundingClientRect().left,
+                      right:deadline.getBoundingClientRect().right},
                     chipX:chipRect.left,
                     chipFlexDirection:getComputedStyle(chip).flexDirection,
                     chipBackground:getComputedStyle(chip).backgroundColor,
@@ -1014,11 +1155,34 @@ class TimelineDragWebViewInstrumentedTest {
                 "pan-x", webGeometry.getString("chipTouchAction"))
             val clearTimelineScreenshot = File(storage.cacheDir, "native095-clear-date-deadline.png")
             saveWindowScreenshot(clearTimelineScreenshot)
+            val clearScreenshotUri = publishScreenshotForQa(clearTimelineScreenshot)
+            println("NATIVE095_DENSE_DATE_DEADLINE clearScreenshot=$clearScreenshotUri " +
+                "scrollInitial=$webLeftScrollInitial scrollFinal=$webLeftScroll " +
+                "geometry=$webGeometry")
             println("NATIVE_095_TIMELINE_SCREENSHOTS " + JSONObject()
                 .put("native", nativeTimelineScreenshot.absolutePath)
                 .put("clear", clearTimelineScreenshot.absolutePath))
             println("NATIVE_CLEAR_TIMELINE_TRUE_TIME_GEOMETRY eventSeq=$eventSeq activitySeq=$activitySeq " +
                 "visible=[$visibleStart,$visibleEnd] geometry=$webGeometry")
+            val chipProbe = eventProbe(view, eventSeq, "dateDeadline")
+            assertTrue("Web date chip must be a hit-testable action in the same crowded fixture: $chipProbe",
+                chipProbe.getBoolean("found") && chipProbe.getBoolean("hitButton"))
+            val countsBeforeChipTap = Triple(clearStore.draftCount(), clearStore.commitCount(),
+                clearStore.identityCount())
+            sendTouch(view, chipProbe, holdMillis = 0)
+            awaitJs(view, "!document.querySelector('#skinSheet').hidden")
+            val chipEditor = hostState().getJSONObject("editing").getJSONObject("editor")
+            assertTrue("Touching the Web date chip opens its existing Deadline", chipEditor.getBoolean("open"))
+            assertEquals(eventSeq, chipEditor.getLong("eventSeq"))
+            assertEquals("Opening the Web date chip is read-only", countsBeforeChipTap,
+                Triple(clearStore.draftCount(), clearStore.commitCount(), clearStore.identityCount()))
+            evaluate(view, "document.querySelector('#sheetClose').click();true")
+            awaitJs(view, "document.querySelector('#skinSheet').hidden")
+            compose.waitUntil(5_000) {
+                !hostState().getJSONObject("editing").getJSONObject("editor").optBoolean("open")
+            }
+            assertEquals("Closing the untouched Web date-chip editor is read-only", countsBeforeChipTap,
+                Triple(clearStore.draftCount(), clearStore.commitCount(), clearStore.identityCount()))
             val pointProbe = eventProbe(view, eventSeq, "tEvent.DEADLINE")
             val commitsBeforePointTap = clearStore.commitCount()
             val draftsBeforePointTap = clearStore.draftCount()
@@ -1108,7 +1272,7 @@ class TimelineDragWebViewInstrumentedTest {
             assertEquals(clearActivityOriginal, clearStore.get(activitySeq))
             assertEquals(1, nativeStore.draftCount())
             assertEquals(nativeStore.draftCount(), clearStore.draftCount())
-            assertEquals(2L, nativeStore.commitCount())
+            assertEquals(10L, nativeStore.commitCount())
             assertEquals(nativeStore.commitCount(), clearStore.commitCount())
             assertEquals(nativeStore.identityCount(), clearStore.identityCount())
             println("NATIVE_CLEAR_DATE_DEADLINE_DRAG eventSeq=$eventSeq date=$sourceDate " +

@@ -47,8 +47,8 @@ import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Captures frozen Native and current official Web v3 surfaces on isolated API 35 AVDs. The raw
- * reference AVD retains its dedicated eight-event Timeline fixture and owned Memo rows; the Web
- * case uses a unique temporary Store removed in finally.
+ * reference AVD retains its dedicated eight-event Timeline fixture, owned Memo rows, and date-only
+ * Deadline fixture; the Web case uses a unique temporary Store removed in finally.
  */
 @RunWith(AndroidJUnit4::class)
 class Native095RawAndWebDualWingInstrumentedTest {
@@ -56,6 +56,10 @@ class Native095RawAndWebDualWingInstrumentedTest {
     val compose = createAndroidComposeRule<MainActivity>()
 
     private data class StoreCounts(val drafts: Long, val commits: Long, val identities: Long)
+
+    private fun isRawDateDeadlineFixture(title: String): Boolean =
+        title.startsWith("N095_RAW_DATE_DEADLINE_") ||
+            title.startsWith("N095_RAW_DATE_ACTIVITY_")
 
     /** Isolate databases, preferences, and app files while retaining the real APK resources. */
     private class IsolatedAppContext(
@@ -116,6 +120,249 @@ class Native095RawAndWebDualWingInstrumentedTest {
     fun currentWebV3MemoRowsUseFrozenMetadataAndOpenWithoutStoreWrites() =
         runMemoMetadataFixture("powercal-clear-default")
 
+    @Test
+    fun frozen095NativeApkDateOnlyDeadlineChipAndEndOfDayPointAreReadOnly() {
+        val storage = compose.activity.applicationContext
+        val store = PowerCalStores.get(storage)
+        val zone = ZoneId.systemDefault()
+        val date = LocalDate.now(zone)
+        val suffix = date.toString().replace("-", "")
+        val deadlineTitle = "N095_RAW_DATE_DEADLINE_$suffix"
+        val activityTitle = "N095_RAW_DATE_ACTIVITY_$suffix"
+        val before = store.all()
+        val expectedWings = (0..3).map { "WING_LEFT_$it" }.toSet() +
+            (0..3).map { "WING_RIGHT_$it" }.toSet()
+        val expectedMemos = setOf(
+            "MEMO_VISUAL_DATED_TITLE", "MEMO_VISUAL_UNDATED_TITLE", "MEMO_VISUAL_REPEATING_TITLE"
+        )
+        assertTrue("Frozen APK reference AVD may contain only this class's preserved fixtures",
+            before.all { it.title in expectedWings || it.title in expectedMemos ||
+                isRawDateDeadlineFixture(it.title) })
+        val wingRows = before.filter { it.title in expectedWings }
+        assertTrue("The preserved eight-event wing fixture must be empty or complete",
+            wingRows.isEmpty() || wingRows.map { it.title }.toSet() == expectedWings)
+        assertTrue("Preserved Memo fixtures may only use their owned names",
+            before.filter { it.title in expectedMemos }.map { it.title }.toSet().size <= expectedMemos.size)
+        val oldDateRows = before.filter { isRawDateDeadlineFixture(it.title) }
+        assertTrue("Owned raw date fixtures have unique titles",
+            oldDateRows.map { it.title }.toSet().size == oldDateRows.size)
+        assertTrue("Raw date fixture kinds match their explicit roles", oldDateRows.all {
+            if (it.title.startsWith("N095_RAW_DATE_DEADLINE_"))
+                it.kind == TemporalKind.DEADLINE && it.isDateOnlyDeadline()
+            else it.kind == TemporalKind.ACTIVITY
+        })
+
+        val baselineCounts = counts(store)
+        val deadlineMatches = before.filter { it.title == deadlineTitle }
+        val activityMatches = before.filter { it.title == activityTitle }
+        assertTrue("Today fixture Deadline is unique", deadlineMatches.size <= 1)
+        assertTrue("Today geometry Activity fixture is unique", activityMatches.size <= 1)
+        var created = 0
+        val deadlineSeq = deadlineMatches.singleOrNull()?.eventSeq ?: run {
+            val result = store.createFormalEvent(
+                DraftForm(kind = TemporalKind.DEADLINE, title = deadlineTitle,
+                    endText = date.toString(), zoneId = zone.id),
+                "native095-raw-date-deadline-$date"
+            ) as? PowerStore.CommitOutcome.Committed
+                ?: throw AssertionError("Could not seed frozen APK date-only Deadline fixture")
+            created++
+            result.eventSeq
+        }
+        val activityStart = date.atTime(9, 15).atZone(zone).toInstant().toEpochMilli()
+        val activitySeq = activityMatches.singleOrNull()?.eventSeq ?: run {
+            val result = store.createFormalEvent(
+                DraftForm(kind = TemporalKind.ACTIVITY, title = activityTitle,
+                    startText = DraftForm.formatInstant(activityStart, zone),
+                    endText = DraftForm.formatInstant(activityStart + 3_600_000L, zone),
+                    zoneId = zone.id),
+                "native095-raw-date-activity-$date"
+            ) as? PowerStore.CommitOutcome.Committed
+                ?: throw AssertionError("Could not seed frozen APK geometry Activity fixture")
+            created++
+            result.eventSeq
+        }
+        val deadline = requireNotNull(store.get(deadlineSeq))
+        val activity = requireNotNull(store.get(activitySeq))
+        assertEquals(TemporalKind.DEADLINE, deadline.kind)
+        assertTrue("The frozen APK fixture remains date-only", deadline.isDateOnlyDeadline())
+        assertEquals(date.toString(), deadline.deadlineDate)
+        assertEquals(null, deadline.deadlineMillis)
+        assertEquals(TemporalKind.ACTIVITY, activity.kind)
+        val seededCounts = counts(store)
+        assertEquals(baselineCounts.drafts, seededCounts.drafts)
+        assertEquals(baselineCounts.commits + created, seededCounts.commits)
+        assertEquals(baselineCounts.identities + created, seededCounts.identities)
+
+        val packageInfo = storage.packageManager.getPackageInfo(storage.packageName, 0)
+        assertEquals("0.9.5-rc.1", packageInfo.versionName)
+        val skinChoice = storage.getSharedPreferences("powercal-skin-choice", Context.MODE_PRIVATE)
+            .getString("selected", null)
+        assertTrue("The original AVD must remain on its frozen Native choice",
+            skinChoice == null || skinChoice == "powercal-default")
+        val onboarding = storage.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+        val hadOnboardingFlag = onboarding.contains("system-calendar-import-asked")
+        val previousOnboardingFlag = onboarding.getBoolean("system-calendar-import-asked", false)
+        try {
+            check(onboarding.edit().putBoolean("system-calendar-import-asked", true).commit())
+            compose.runOnUiThread { compose.activity.recreate() }
+            compose.waitUntil(30_000) {
+                compose.onAllNodesWithContentDescription("今日 · 复位为全天")
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithContentDescription("今日 · 复位为全天").performClick()
+            compose.waitUntil(15_000) {
+                compose.onAllNodes(hasContentDescription(deadlineTitle, substring = true) and
+                    hasClickAction()).fetchSemanticsNodes().isNotEmpty()
+            }
+
+            val viewport = compose.onNodeWithTag("timeline-viewport")
+                .fetchSemanticsNode().boundsInRoot
+            val dateLabel = "$date · 截止，无具体时刻"
+            val chipMatcher = hasText(dateLabel, substring = true) and hasClickAction()
+            val chipNode = compose.onNode(chipMatcher).fetchSemanticsNode()
+            val chipBounds = chipNode.boundsInRoot
+            assertTrue("The frozen Native date chip is in the band above the timeline viewport",
+                chipBounds.bottom <= viewport.top + 1f)
+
+            val initialPointNodes = compose.onAllNodes(
+                hasContentDescription(deadlineTitle, substring = true) and hasClickAction()
+            ).fetchSemanticsNodes()
+            assertEquals("Frozen Native must expose one date Deadline event node", 1, initialPointNodes.size)
+            val initialPointBounds = initialPointNodes.single().boundsInRoot
+            val initialScreenshot = saveScreenshot("native095-raw-date-deadline-initial-outer-lanes.png")
+            val dayStart = date.atStartOfDay(zone).toInstant().toEpochMilli()
+            val nextDayStart = date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+            val deadlineAnchor = requireNotNull(deadline.visualAxisMillis(zone))
+            assertEquals("The frozen Native point uses the date-only end-of-day anchor",
+                nextDayStart - 1, deadlineAnchor)
+            val expectedLineY = viewport.top +
+                (deadlineAnchor - dayStart).toFloat() / (nextDayStart - dayStart) * viewport.height
+            assertEquals("Today's 24-hour viewport ends at the local date boundary",
+                viewport.bottom, expectedLineY, 2f)
+            val deadlineLayoutItem = TimelineLayout.layout(store.all()).items
+                .single { it.record.eventSeq == deadlineSeq }
+            assertEquals("Frozen Native DEADLINE belongs to the left wing", "LEFT",
+                deadlineLayoutItem.side.name)
+            val initialLeftScroll = scrollRange("timeline-left-lanes")
+            var leftScroll = initialLeftScroll
+            var leftSwipes = 0
+            while (leftScroll.first < leftScroll.second - 1f && leftSwipes < 5) {
+                swipeNative("timeline-left-lanes", -1)
+                compose.waitForIdle()
+                leftScroll = scrollRange("timeline-left-lanes")
+                leftSwipes++
+            }
+            assertTrue("The raw fixture must allow scrolling from outer alarms to its inner deadline lane; " +
+                "initial=$initialLeftScroll final=$leftScroll swipes=$leftSwipes",
+                leftScroll.first >= leftScroll.second - 1f)
+            assertEquals("The date Deadline reuses the first left lane after the alarms end", 0,
+                deadlineLayoutItem.lane)
+            val leftReferenceBounds = nativeBounds("WING_LEFT_0")
+            assertTrue("The matching left lane is visible after the native wing scroll: $leftReferenceBounds",
+                leftReferenceBounds.width > 0f && leftReferenceBounds.height > 0f)
+            val pointNodes = compose.onAllNodes(
+                hasContentDescription(deadlineTitle, substring = true) and hasClickAction()
+            ).fetchSemanticsNodes()
+            assertEquals("Frozen Native exposes one clickable date Deadline point after revealing its lane",
+                1, pointNodes.size)
+            val pointNode = pointNodes.single()
+            val pointBounds = pointNode.boundsInRoot
+            assertTrue("The 23:59 point is placed in its scrolled left lane: $pointBounds",
+                pointBounds.width > 0f && pointBounds.height > 0f)
+            val screenshot = saveScreenshot("native095-raw-date-deadline-inner-lane.png")
+            val rootOffset = IntArray(2)
+            compose.activity.findViewById<View>(android.R.id.content).getLocationOnScreen(rootOffset)
+            val density = compose.activity.resources.displayMetrics.density
+            val markerTapX = rootOffset[0] + (leftReferenceBounds.left + leftReferenceBounds.right) / 2f
+            val markerTapY = rootOffset[1] + expectedLineY - 28f * density
+            println("NATIVE095_RAW_DATE_DEADLINE_GEOMETRY viewport=$viewport chip=$chipBounds " +
+                "initialPointBounds=$initialPointBounds pointBounds=$pointBounds pointConfig=${pointNode.config} " +
+                "leftLaneReference=$leftReferenceBounds side=${deadlineLayoutItem.side} lane=${deadlineLayoutItem.lane} " +
+                "initialLeftScroll=$initialLeftScroll finalLeftScroll=$leftScroll leftSwipes=$leftSwipes " +
+                "markerTap=($markerTapX,$markerTapY) initialScreenshot=${initialScreenshot.absolutePath} " +
+                "density=$density anchor=$deadlineAnchor")
+
+            val countsBeforeChipTap = counts(store)
+            compose.onNode(chipMatcher).performTouchInput { click() }
+            compose.waitUntil(15_000) {
+                compose.onAllNodes(hasText("编辑事件", substring = true))
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals("Opening the date chip is read-only", countsBeforeChipTap, counts(store))
+            compose.onNodeWithText("存档并退出").performTouchInput { click() }
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithContentDescription("今日 · 复位为全天")
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals("Closing the untouched date-chip editor is read-only", countsBeforeChipTap, counts(store))
+
+            val pointBeforeTap = counts(store)
+            sendScreenTouch(markerTapX, markerTapY)
+            compose.waitUntil(15_000) {
+                compose.onAllNodes(hasText("编辑事件", substring = true))
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals("Opening the 23:59 point is read-only", pointBeforeTap, counts(store))
+            compose.onNodeWithText("存档并退出").performTouchInput { click() }
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithContentDescription("今日 · 复位为全天")
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            assertEquals("Closing the untouched point editor is read-only", pointBeforeTap, counts(store))
+
+            assertTrue("The owned raw Deadline fixture has no pre-existing actionable draft",
+                store.pendingDraftsFor(deadlineSeq).isEmpty())
+            val beforeDrag = counts(store)
+            compose.onAllNodes(hasContentDescription(deadlineTitle, substring = true) and hasClickAction())
+                .onFirst().performTouchInput {
+                    down(center)
+                    advanceEventTime(700)
+                    moveBy(androidx.compose.ui.geometry.Offset(0f, viewport.height / 24f))
+                    up()
+                }
+            compose.waitUntil(30_000) { store.pendingDraftsFor(deadlineSeq).size == 1 }
+            val rawDragDraft = store.pendingDraftsFor(deadlineSeq).single()
+            val movedDate = date.plusDays(1).toString()
+            assertEquals("Frozen APK drag stages the next date in the existing Deadline draft",
+                movedDate, rawDragDraft.form.endText)
+            assertTrue("Frozen APK drag keeps the Deadline date-only",
+                rawDragDraft.form.parseDeadline() is dev.powerfulcalendar.core.DeadlineValue.Date)
+            assertEquals("A date-only drag does not change the formal record", deadline, store.get(deadlineSeq))
+            assertEquals("A date-only drag does not formally commit", beforeDrag.commits, counts(store).commits)
+            assertEquals("A date-only drag does not allocate a second event identity",
+                beforeDrag.identities, counts(store).identities)
+            assertEquals("The drag creates exactly one owned draft row", beforeDrag.drafts + 1, counts(store).drafts)
+            assertTrue("The raw QA draft can be explicitly discarded after verification",
+                store.discard(rawDragDraft.draftId))
+            assertTrue("Discard leaves no actionable draft for the raw Deadline fixture",
+                store.pendingDraftsFor(deadlineSeq).isEmpty())
+            assertEquals("Discarding the QA draft leaves the formal record unchanged", deadline,
+                store.get(deadlineSeq))
+            println("NATIVE095_RAW_DATE_DEADLINE_DRAG date=$date target=$movedDate " +
+                "draftId=${rawDragDraft.draftId} deadlineDate=${rawDragDraft.form.endText} " +
+                "formal=$deadline committed=${counts(store).commits == beforeDrag.commits} " +
+                "identities=${counts(store).identities == beforeDrag.identities} " +
+                "discarded=${store.pendingDraftsFor(deadlineSeq).isEmpty()}")
+
+            assertEquals(deadline, store.get(deadlineSeq))
+            assertEquals(activity, store.get(activitySeq))
+            assertEquals("Original date selection remains unchanged", skinChoice,
+                storage.getSharedPreferences("powercal-skin-choice", Context.MODE_PRIVATE)
+                    .getString("selected", null))
+            println("NATIVE095_RAW_DATE_DEADLINE package=${packageInfo.versionName} date=$date " +
+                "zone=${zone.id} deadlineSeq=$deadlineSeq activitySeq=$activitySeq " +
+                "anchor=$deadlineAnchor viewport=$viewport expectedLineY=$expectedLineY " +
+                "initialPointBounds=$initialPointBounds pointBounds=$pointBounds chipBounds=$chipBounds " +
+                "counts=$seededCounts " +
+                "screenshot=${screenshot.absolutePath}")
+        } finally {
+            val restore = onboarding.edit()
+            if (hadOnboardingFlag) restore.putBoolean("system-calendar-import-asked", previousOnboardingFlag)
+            else restore.remove("system-calendar-import-asked")
+            check(restore.commit())
+        }
+    }
+
     private fun runMemoMetadataFixture(skinId: String) {
         val frozenNative = skinId == "powercal-default"
         val storage = compose.activity.applicationContext
@@ -157,7 +404,9 @@ class Native095RawAndWebDualWingInstrumentedTest {
         try {
             if (frozenNative) {
                 val expectedBaseline = (0..3).map { "WING_LEFT_$it" } + (0..3).map { "WING_RIGHT_$it" }
-                val rawOriginalRecords = baselineRecords.filterNot { it.title in fixtureTitles }
+                val rawOriginalRecords = baselineRecords.filterNot {
+                    it.title in fixtureTitles || isRawDateDeadlineFixture(it.title)
+                }
                 assertEquals("Raw reference AVD must retain its original isolated eight-event fixture",
                     expectedBaseline.toSet(), rawOriginalRecords.map { it.title }.toSet())
                 assertEquals(8, rawOriginalRecords.size)
@@ -262,7 +511,7 @@ class Native095RawAndWebDualWingInstrumentedTest {
                 assertEquals("Opening a Memo row is read-only", seedCounts, counts(store))
                 assertEquals("Opening a Memo row must preserve its Core records",
                     fixtureRecordsBeforeOpen, store.all().filter { it.eventSeq in fixtureSequences })
-                compose.onNodeWithText("存档并退出").performClick()
+            compose.onNodeWithText("存档并退出").performTouchInput { click() }
                 compose.waitUntil(15_000) {
                     compose.onAllNodesWithText("保存修改").fetchSemanticsNodes().isEmpty()
                 }
@@ -426,16 +675,23 @@ class Native095RawAndWebDualWingInstrumentedTest {
             )
             val nativeTimelineFixture = preexistingFixture.filter { it.title in expectedTitles }
             val nativeMemoFixture = preexistingFixture.filter { it.title in expectedMemoTitles }
+            val nativeDateDeadlineFixture = preexistingFixture.filter { isRawDateDeadlineFixture(it.title) }
             val nativeFixtureSeededDuringThisTest = frozenNative && nativeTimelineFixture.isEmpty()
             if (frozenNative) {
-                assertTrue("Raw AVD may contain only the Timeline and Memo fixtures owned by this class",
-                    preexistingFixture.all { it.title in expectedTitles || it.title in expectedMemoTitles })
+                assertTrue("Raw AVD may contain only the Timeline, Memo, and date Deadline fixtures owned by this class",
+                    preexistingFixture.all { it.title in expectedTitles || it.title in expectedMemoTitles ||
+                        isRawDateDeadlineFixture(it.title) })
                 assertTrue("Raw Timeline fixture must be empty or contain all eight rows",
                     nativeTimelineFixture.isEmpty() || nativeTimelineFixture.map { it.title }.toSet() == expectedTitles)
                 assertTrue("Raw Memo fixture must be empty or contain all three rows",
                     nativeMemoFixture.isEmpty() || nativeMemoFixture.map { it.title }.toSet() == expectedMemoTitles)
                 assertTrue("Native memo fixture rows must have Memo kind",
                     nativeMemoFixture.all { it.kind == TemporalKind.MEMO })
+                assertTrue("Owned raw date Deadline fixture kinds remain valid", nativeDateDeadlineFixture.all {
+                    if (it.title.startsWith("N095_RAW_DATE_DEADLINE_"))
+                        it.kind == TemporalKind.DEADLINE && it.isDateOnlyDeadline()
+                    else it.kind == TemporalKind.ACTIVITY
+                })
                 assertEquals("Raw fixture rows must have no pending drafts", 0,
                     preexistingFixture.sumOf { store.pendingDraftsFor(it.eventSeq).size })
                 assertTrue("Raw AVD must not have a prior skin selection",
@@ -872,6 +1128,23 @@ class Native095RawAndWebDualWingInstrumentedTest {
             SystemClock.sleep(90)
         }
         send(MotionEvent.ACTION_UP, SystemClock.uptimeMillis(), endX, endY)
+    }
+
+    private fun sendScreenTouch(screenX: Float, screenY: Float) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val downTime = SystemClock.uptimeMillis()
+        fun send(action: Int, eventTime: Long) {
+            val event = MotionEvent.obtain(downTime, eventTime, action, screenX, screenY, 0)
+            try {
+                event.source = InputDevice.SOURCE_TOUCHSCREEN
+                instrumentation.sendPointerSync(event)
+            } finally {
+                event.recycle()
+            }
+        }
+        send(MotionEvent.ACTION_DOWN, downTime)
+        SystemClock.sleep(80)
+        send(MotionEvent.ACTION_UP, SystemClock.uptimeMillis())
     }
 
     private fun saveScreenshot(name: String, web: WebView? = null): File {
