@@ -8,23 +8,23 @@ OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: aabd97bed91711b498b33658b651f012584cba92 (frozen Native/Web date-only Deadline Android test coverage; no product UI source change)
-LATEST_VERIFIED_HEAD: aabd97bed91711b498b33658b651f012584cba92 (serial Gradle gate PASS; forced JVM rerun 988/988; raw frozen APK and current Web v3 target instrumentation 1/1 each; official single-package verification PASS)
+LATEST_CODE_HEAD: 5a267814ca83a201f4d2c3a1c3df357c1d35c1a0 (Draft Deck empty and AI-locked readonly parity slice)
+LATEST_VERIFIED_HEAD: 5a267814ca83a201f4d2c3a1c3df357c1d35c1a0 (serial Gradle gate PASS; 989/989 JVM; frozen raw APK and current WebView instrumented tests 1/1 each; Studio Python 90/90; one-package verification PASS)
 CURRENT_TASK: NATIVE_095_VISUAL_PARITY
 TASK_STATUS: IN_PROGRESS
 PRODUCT_CUTOVER: HOLD
 TASK_BASE_HEAD: 05514a12c3cf6c0b62bfe2daad04fbbdf433097f
-WORKING_APK_SHA256: 3E95E2992AD89EAE7BC8C0B59084F39504A27432A3533532BB78B1D6AD58EA56
-WORKING_DEFAULT_SKIN_SHA256: dd49636784dfab7ee356a114d3d4db0963087f37a4e1f0bc3ce505b766f9d14e
+WORKING_APK_SHA256: 1DA53F916AE924C1583A2472CB10820754A7E4BD21E6EEBE433642505940D54A
+WORKING_DEFAULT_SKIN_SHA256: 13a6efc6af0e68a8d91c7786ac3bd0264dea630fe4880feefaa39251be869ffa
 WORKING_DEFAULT_SKIN_ID: powercal-clear-default
-NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (date-only Deadline narrow PASS; Timeline and full page parity remain IN PROGRESS)
+NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (Draft Deck empty/AI-locked narrow PASS; full Deck and app parity remain PARTIAL)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
-LAST_COMPLETED_TASK: NATIVE_095_TIMELINE_DATE_DEADLINE_PARITY (narrow PASS; Timeline overall remains PARTIAL)
-LAST_COMPLETED_COMMIT: aabd97bed91711b498b33658b651f012584cba92
-LAST_ATTEMPTED_TASK: PowerCal Functional Preview artifact and main-flow smoke (DELIVERED for isolated QA; AI chat send NOT TESTED after two identical trusted-touch automation failures)
-LAST_ATTEMPTED_COMMIT: 05514a12c3cf6c0b62bfe2daad04fbbdf433097f (APK build baseline)
-NEXT_TASK: NATIVE_095_DRAFT_DECK_EMPTY_AI_LOCKED_PARITY
-NEXT_ACTION: Compare frozen Native and Web v3 empty/no-draft and AI-locked read-only Draft Deck states with a deterministic matched fixture; verify disabled/rejected actions and unchanged Store state. Keep full Draft Deck and overall parity PARTIAL.
+LAST_COMPLETED_TASK: NATIVE_095_DRAFT_DECK_EMPTY_AI_LOCKED_PARITY (narrow PASS; full Draft Deck remains PARTIAL)
+LAST_COMPLETED_COMMIT: 5a267814ca83a201f4d2c3a1c3df357c1d35c1a0
+LAST_ATTEMPTED_TASK: NATIVE_095_DRAFT_DECK_EMPTY_AI_LOCKED_PARITY (narrow PASS; full Draft Deck remains PARTIAL)
+LAST_ATTEMPTED_COMMIT: 5a267814ca83a201f4d2c3a1c3df357c1d35c1a0
+NEXT_TASK: NATIVE_095_DRAFT_DECK_RECOVERY_CONFLICT_PARITY
+NEXT_ACTION: Compare frozen Native and Web v3 Draft Deck recovery, conflict, delete confirmation, completed-item undo, and process recovery using an isolated deterministic fixture. Preserve existing data; keep the complete Draft Deck and overall parity PARTIAL until all required states are paired.
 FUNCTIONAL_PREVIEW_DELIVERY:
   status: DELIVERED (isolated QA Functional Preview; not a public release and not full Native 0.9.5 parity)
   apk: dist/powercal/PowerCal-Functional-Preview-2026-11-07-05514a12.apk
@@ -38,6 +38,20 @@ FUNCTIONAL_PREVIEW_DELIVERY:
   limitation: AI page entry only; chat-send instrumentation failed twice before Host request at trusted #chatSend pointerdown; no live provider used. Import/export, permission change, OEM reminder delivery, TalkBack and physical-device tests not rerun.
   evidence: dist/powercal/PowerCal-Functional-Preview-2026-11-07.md; .local/android-test/reports/functional-preview-20261107/manifest.md
 LATEST_SLICE_EVIDENCE:
+  NATIVE_095_DRAFT_DECK_EMPTY_AI_LOCKED_PARITY:
+    status: NARROW PASS (empty/no-draft visual state and AI-locked readonly card only; entire Draft Deck remains PARTIAL)
+    code_commit: 5a267814ca83a201f4d2c3a1c3df357c1d35c1a0
+    source_baseline: b1f7629f0c52812e1887443872f43aa6c49908c4
+    original_apk_sha256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
+    android: frozen Native PowerCal_Native095_MenuReference_20261107/emulator-5560; Web QA PowerCal_Wave2_QA35_20261104/emulator-5556; API 35, 1080x2400, 420dpi; WebView 124.0.6367.219
+    behavior: WebView empty-state geometry is within 8px vertically and 3px horizontally of raw frozen APK; AI-locked form fields and primary controls align within about 3px vertically; real trusted Stop action requests cancellation while retaining the AI lock and pending review state
+    store: Web empty open/return leaves Store snapshot unchanged; locked discard is rejected; Stop only transitions batch phase to CANCEL_REQUESTED; pending draft and formal records remain unchanged
+    tests: serial Gradle gate PASS; 142 XML / 989 JVM tests / 0 failures-errors-skips; source boundaries, assemble, lint, AndroidTest compile PASS; Studio Python 90/90; current WebView target test 1/1 and frozen raw APK test 1/1; official one-package verification PASS
+    current_apk_sha256: 1DA53F916AE924C1583A2472CB10820754A7E4BD21E6EEBE433642505940D54A
+    default_skin_sha256: 13a6efc6af0e68a8d91c7786ac3bd0264dea630fe4880feefaa39251be869ffa (one package; source/APK bytes match; 10 entries / 422210 bytes)
+    screenshots: Native empty 461BF4453E18E40647F4EEBA47A7D2C1FC930EC122F7035772A9F1C4C1F65937; Web empty 785C6AA60A6B5BA8F2F08EC6C33F3213EB1576D6A6A1E7A6AC571B8690EEC70E; Native AI-locked F5A11347A243BC2B8DC44A274EF6425F460F8D32B81AA00573FD4B9EB86A66D5; Web AI-locked 7F8FFB3C6224CC1E1FE5DE0DC42558EB217A424345DAA856821808B9E04AE8FC
+    evidence: .local/android-test/reports/NATIVE_095_DRAFT_DECK_EMPTY_AI_LOCKED-20261107/manifest.md; issue docs/issues/PC-ISSUE-SEPARATION-NATIVE-DRAFT-DECK-EMPTY-AI-LOCKED-20261107.md
+    limitations: Browser E2E NOT TESTED in this slice; conflict/recovery/delete confirmation/undo/IME/accessibility/process recovery and full Draft Deck remain open; Product Cutover HOLD
   NATIVE_095_TIMELINE_DATE_DEADLINE_ANDROID_AB:
     status: NARROW PASS (date-only chip, 23:59 point, read-only open/close and date-precision drag; Timeline remains PARTIAL)
     code_commit: aabd97bed91711b498b33658b651f012584cba92
