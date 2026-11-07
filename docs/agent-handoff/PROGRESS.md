@@ -2891,3 +2891,11 @@ API 35 emulator-5570 真实触控 Native Compose 与打包 Clear WebView 的无 
 - APK SHA `B41DCD08421B4BE91D40FC0B205945BCEB0D3884B0DD4F38C8D80B8C505F9A6C`；Skin SHA `88ea98745669139bd4c454b4e23c1555cd29450de3469e906d11df99124f8a50`。证据 `.local/android-test/reports/native-settings-route-20261107/manifest.md`；Issue `docs/issues/PC-ISSUE-SEPARATION-NATIVE-TOOLS-ROUTE-20261107.md`。
 - 首轮 Browser action 等待与旧路由断言失败已保留，修正测试握手等待/期望后最终通过。Chrome/Studio Mock 不代表 Android 权限 UI 验收。未重新进行 Native/Web Settings 配对截图；视觉和页面完整交互仍 PARTIAL/NOT TESTED。Native 恢复保持可达，Product Cutover `HOLD`。
 - 唯一下一动作：在隔离 API 35 上用冻结 Native 0.9.5 Settings 与当前 WebView 截图/操作配对比较，跳过 Owner 已退役的皮肤目录并保留 Host 操作和独立恢复。
+
+## 2026-11-07 Native 0.9.5 Draft Deck 持久卡组表面（窄切片 PASS）
+
+- 产品提交：`26cea3e974c5f695b940d8b26c9fa19a8641cc9c`。只迁移已有持久草稿卡组的叠卡层级、折叠摘要/展开、搜索/浏览、替换提案、自动检查点外观和 modal system-bar scrim；Core 业务语义、Native 恢复与单一包身份保持。
+- 验证：串行 Gradle gate 988/988 JVM PASS；源边界、Debug assemble、Lint、AndroidTest compile PASS。精确重建资产后，官方包检查为唯一 `powercal-clear-default.pcskin`，10 项、420396 bytes，源/APK SHA `dd49636784dfab7ee356a114d3d4db0963087f37a4e1f0bc3ce505b766f9d14e`；APK SHA `3E95E2992AD89EAE7BC8C0B59084F39504A27432A3533532BB78B1D6AD58EA56`。Studio Python 90/90、定向 Node 语法、Deck 生命周期和搜索/替换 Preview E2E PASS；API 35 `emulator-5556` 上 Deck 仪器用例手势导航与三键模式分别 1/1 PASS，精确包重建后再 1/1 PASS。已确认同一隔离 Store 无浏览写入。
+- 注意：综合 Browser E2E 在另一个 Timeline 断言失败——左翼初始 lane 201/202 被折叠；它不属于 Draft Deck，已作为后续独立 Timeline 差异记录。Gradle connected task 未尊重传入的设备序列号，在目标 AVD 用例通过后又排队 emulator-5554；任务立即中断。未记录该参考 AVD 测试结果；设备仍显示原 `0.9.5-rc.1`/905 包，未清除应用或 AVD 数据。
+- 证据：`.local/android-test/reports/native095-draftdeck-20261107/manifest.md`；Issue `docs/issues/PC-ISSUE-SEPARATION-NATIVE-DRAFT-DECK-STACK-20261107.md`。成对截图和量测在 manifest 列出的同目录。全 Draft Deck、全页面 Native/Web parity 仍 `PARTIAL`，Product Cutover `HOLD`。
+- 下一动作：对综合 Browser E2E 揭示的左翼初始视口与日期型 Deadline 泳道投影建立对应 API 35 Android 对照；随后继续覆盖 Draft Deck 未签核状态。

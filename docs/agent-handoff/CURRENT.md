@@ -8,23 +8,23 @@ OWNER_VISUAL_REFERENCE_APK: .local/android-test/artifacts/physical-qa/PowerCal-0
 OWNER_VISUAL_REFERENCE_APK_SHA256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
 WAVE2_START_HEAD: 3b54097d6383c0349b5d3d638c228320e3c8e22c
 WAVE3_START_HEAD: 82b456fd2bfc15df379fd15d967fac3da57b899d
-LATEST_CODE_HEAD: 05514a12c3cf6c0b62bfe2daad04fbbdf433097f (Native 0.9.5 Timeline pinch parity slice)
-LATEST_VERIFIED_HEAD: 05514a12c3cf6c0b62bfe2daad04fbbdf433097f (serial Gradle PASS; 987/987 JVM; API 35 main-flow checks; Studio Python 90/90, catalog 9/9, browser E2E PASS; official package verification PASS)
+LATEST_CODE_HEAD: 26cea3e974c5f695b940d8b26c9fa19a8641cc9c (Native 0.9.5 Draft Deck persisted-stack narrow parity slice)
+LATEST_VERIFIED_HEAD: 26cea3e974c5f695b940d8b26c9fa19a8641cc9c (serial Gradle PASS; 988/988 JVM; exact rebuilt package verified; API 35 target Deck test 1/1; Studio Python 90/90; focused Deck browser E2Es PASS; integrated browser E2E has a separately tracked Timeline initial-lane failure)
 CURRENT_TASK: NATIVE_095_DRAFT_DECK_VISUAL_PARITY
 TASK_STATUS: IN_PROGRESS
 PRODUCT_CUTOVER: HOLD
 TASK_BASE_HEAD: 05514a12c3cf6c0b62bfe2daad04fbbdf433097f
-WORKING_APK_SHA256: CF310827CA4C3A7989DB79A5D35F6F2755F2AD01E7601D28B40CA271C74492CB
-WORKING_DEFAULT_SKIN_SHA256: 78C13F92BB2878A559CCD57FE64FEA7F22D2137460620139C69155C7CBF5BB7E
+WORKING_APK_SHA256: 3E95E2992AD89EAE7BC8C0B59084F39504A27432A3533532BB78B1D6AD58EA56
+WORKING_DEFAULT_SKIN_SHA256: dd49636784dfab7ee356a114d3d4db0963087f37a4e1f0bc3ce505b766f9d14e
 WORKING_DEFAULT_SKIN_ID: powercal-clear-default
 NATIVE_VISUAL_PARITY_AUDIT: docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md (inventory complete; pinch slice narrow PASS; full page parity remains IN PROGRESS)
 PREVIOUS_TASK_STATE: Q-05 single-default startup migration and protected-branch cutover (PASS; public release remains HOLD)
-LAST_COMPLETED_TASK: Native 0.9.5 Timeline two-finger vertical pinch and zoom-label parity (narrow PASS; entire Timeline remains PARTIAL)
-LAST_COMPLETED_COMMIT: 05514a12c3cf6c0b62bfe2daad04fbbdf433097f
+LAST_COMPLETED_TASK: Native 0.9.5 Draft Deck persisted stack/search/browse presentation (narrow PASS; complete Deck remains PARTIAL)
+LAST_COMPLETED_COMMIT: 26cea3e974c5f695b940d8b26c9fa19a8641cc9c
 LAST_ATTEMPTED_TASK: PowerCal Functional Preview artifact and main-flow smoke (DELIVERED for isolated QA; AI chat send NOT TESTED after two identical trusted-touch automation failures)
 LAST_ATTEMPTED_COMMIT: 05514a12c3cf6c0b62bfe2daad04fbbdf433097f (APK build baseline)
 NEXT_TASK: NATIVE_095_DRAFT_DECK_VISUAL_PARITY
-NEXT_ACTION: On the verified API 35 Native reference AVD and Web QA AVD, use the same deterministic pending-draft fixture to compare NativeDraftDeckScreen with Web #pendingDeck. Migrate only the evidenced overlay/card hierarchy, scrim, geometry, and touch/scroll behavior through the existing Web v3 project and formal Host APIs; preserve draft/Core semantics, then run paired screenshot and Android touch checks. Keep the complete deck PARTIAL until its states are covered.
+NEXT_ACTION: Close the independent Timeline mismatch found by the integrated Browser E2E: verify left-wing initial-lane position and date-only Deadline lane projection against the frozen Native fixture on API 35, with targeted Android checks. Then continue the still-PARTIAL Draft Deck empty/transient, AI-locked, restore/conflict, delete-confirmation, completion/undo and IME/accessibility states.
 FUNCTIONAL_PREVIEW_DELIVERY:
   status: DELIVERED (isolated QA Functional Preview; not a public release and not full Native 0.9.5 parity)
   apk: dist/powercal/PowerCal-Functional-Preview-2026-11-07-05514a12.apk
@@ -38,6 +38,17 @@ FUNCTIONAL_PREVIEW_DELIVERY:
   limitation: AI page entry only; chat-send instrumentation failed twice before Host request at trusted #chatSend pointerdown; no live provider used. Import/export, permission change, OEM reminder delivery, TalkBack and physical-device tests not rerun.
   evidence: dist/powercal/PowerCal-Functional-Preview-2026-11-07.md; .local/android-test/reports/functional-preview-20261107/manifest.md
 LATEST_SLICE_EVIDENCE:
+  NATIVE_095_DRAFT_DECK_STACK:
+    status: NARROW PASS (persisted stack, search/browse, proposal route, scrim and system bars; complete Deck remains PARTIAL)
+    code_commit: 26cea3e974c5f695b940d8b26c9fa19a8641cc9c
+    source_baseline: b1f7629f0c52812e1887443872f43aa6c49908c4
+    original_apk_sha256: DCD35A1CB0A5DED6D51ACB0B9275A2EE3BF1D8D107631AA640A58D73FC626F76
+    current_apk_sha256: 3E95E2992AD89EAE7BC8C0B59084F39504A27432A3533532BB78B1D6AD58EA56
+    default_skin_sha256: dd49636784dfab7ee356a114d3d4db0963087f37a4e1f0bc3ce505b766f9d14e (one package; source/APK bytes match)
+    android: emulator-5556 / PowerCal_Wave2_QA35_20261104, API 35; paired reference screenshot from emulator-5560 / PowerCal_Native095_MenuReference_20261107
+    tests: full serial Gradle gate 988/988 JVM PASS; official package verifier PASS; exact rebuilt asset Android Deck test 1/1 PASS; Studio Python 90/90; focused Deck lifecycle and search Browser E2Es PASS
+    evidence: .local/android-test/reports/native095-draftdeck-20261107/manifest.md; docs/issues/PC-ISSUE-SEPARATION-NATIVE-DRAFT-DECK-STACK-20261107.md; docs/agent-handoff/NATIVE_095_VISUAL_PARITY_AUDIT.md
+    residuals: full Browser E2E finds a separate initial-left-wing Timeline fold mismatch; complete Draft Deck state coverage remains partial; Product Cutover HOLD
   NATIVE_095_TIMELINE_PINCH_ZOOM:
     status: NARROW PASS (two-finger vertical pinch, ruler double-tap reset, repeat pinch, display rounding; entire Timeline remains PARTIAL)
     source_baseline: b1f7629f0c52812e1887443872f43aa6c49908c4
