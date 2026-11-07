@@ -37,7 +37,15 @@ async function doubleTapTimelineAxis(frame){
         const iframe=document.querySelector("#webPreview");
         return iframe.src!==old&&iframe.src.includes("/preview/")&&
           document.querySelector("#previewState").textContent.includes("加载中");
-      },{},previous);
+      },{timeout:10000},previous).catch(async error=>{
+        console.error("Studio package preview did not switch",await page.evaluate(()=>({
+          iframe:document.querySelector("#webPreview")?.src,
+          state:document.querySelector("#previewState")?.textContent,
+          status:document.querySelector("#studioStatus")?.textContent,
+          id:document.querySelector("#skinId")?.value
+        })));
+        throw error;
+      });
       await page.waitForFunction(()=>document.querySelector("#previewState").textContent.includes("连接成功"));
       return page.frames().find(candidate=>candidate.url().includes("/preview/"));
     }
@@ -62,8 +70,8 @@ async function doubleTapTimelineAxis(frame){
       "Date-only Deadline must render in the independent date strip without a time");
     assert.ok(sides.alarm,"Alarm must render in left wing");
     assert.ok(sides.activity,"Activity must render in right wing");
-    assert.ok(["#2A62E0","#5A8DFF"].includes(normal.css),
-      "Clear light/dark source palette must load into the iframe");
+    assert.ok(["#2457D6","#9DB8FF"].includes(normal.css),
+      "Frozen Native 0.9.5 light/dark palette must load into the iframe");
     assert.equal(await frame.$eval('[data-action="createDraft"]',e=>e.getAttribute("aria-label")),
       "新建事件");
     console.log("Initial WYSIWYG preview",normal);
@@ -88,10 +96,20 @@ async function doubleTapTimelineAxis(frame){
     await page.waitForFunction(()=>document.querySelector("#bridgeLog").textContent
       .includes("拒绝无效动作 zoomTimeline"));
     await frame.waitForFunction(()=>document.querySelector("#timeRangeLabel").textContent.startsWith("24 小时"));
-    for(let i=0;i<20;i++)await frame.click('[data-action="zoomTimeline"][data-direction="in"]');
-    await frame.waitForFunction(()=>document.querySelector("#timeRangeLabel").textContent.startsWith("0.25 小时"));
-    for(let i=0;i<20;i++)await frame.click('[data-action="zoomTimeline"][data-direction="out"]');
-    await frame.waitForFunction(()=>document.querySelector("#timeRangeLabel").textContent.startsWith("48 小时"));
+    const zoomTo=async(direction,target)=>{
+      for(let i=0;i<40;i++){
+        const before=await frame.$eval("#timeRangeLabel",label=>label.textContent);
+        if(before.startsWith(target))return;
+        await frame.$eval(`[data-action="zoomTimeline"][data-direction="${direction}"]`,button=>button.click());
+        await frame.waitForFunction(previous=>
+          document.querySelector("#timeRangeLabel").textContent!==previous,before);
+      }
+      const current=await frame.$eval("#timeRangeLabel",label=>label.textContent);
+      const log=await page.$eval("#bridgeLog",node=>node.textContent.slice(-260));
+      assert.fail("Timeline zoom did not reach "+target+"; current="+current+"; bridge="+log);
+    };
+    await zoomTo("in","0.3 小时 / 屏");
+    await zoomTo("out","48 小时");
     await doubleTapTimelineAxis(frame);
     await frame.waitForFunction(()=>document.querySelector("#timeRangeLabel").textContent.startsWith("24 小时"));
     await page.waitForFunction(()=>document.querySelector("#bridgeLog").textContent
@@ -140,6 +158,7 @@ async function doubleTapTimelineAxis(frame){
         left:{scrollWidth:left.scrollWidth,clientWidth:left.clientWidth,scrollLeft:left.scrollLeft,
           laneCount:Number(left.querySelector(".timelineLanes").dataset.laneCount),
           laneZero:rect(left.querySelector('.tEvent[data-lane="0"]')),
+          laneLast:rect(left.querySelector(`.tEvent[data-lane="${Number(left.querySelector(".timelineLanes").dataset.laneCount)-1}"]`)),
           viewport:rect(left)},
         right:{scrollWidth:right.scrollWidth,clientWidth:right.clientWidth,scrollLeft:right.scrollLeft,
           laneCount:Number(right.querySelector(".timelineLanes").dataset.laneCount),
@@ -151,8 +170,13 @@ async function doubleTapTimelineAxis(frame){
             title:button.dataset.eventTitle,aria:button.getAttribute("aria-label"),tabIndex:button.tabIndex,
             geometry:button.dataset.temporalGeometry})),
         greedy:[101,301,302,303].map(seq=>activity(seq).foldedTitle),
-        independentLaneTitles:[103,104,201,202,203].map(seq=>({seq,
-          state:event(seq).querySelector(".timelineTitle").dataset.titleFoldState}))
+        independentLaneTitles:[103,104,201,202,203].map(seq=>{
+          const title=event(seq).querySelector(".timelineTitle"),r=title.getBoundingClientRect();
+          const wing=title.closest(".timelineWing").getBoundingClientRect();
+          return {seq,state:title.dataset.titleFoldState,
+            titleRect:{left:r.left,right:r.right,top:r.top,bottom:r.bottom},
+            wingRect:{left:wing.left,right:wing.right,top:wing.top,bottom:wing.bottom}};
+        })
       };
     });
     const expectedRect=event=>{
@@ -194,11 +218,12 @@ async function doubleTapTimelineAxis(frame){
     assert.ok(geometry.greedy.every(item=>item.pointerEvents==="none"&&item.ariaHidden==="true"),
       "Decorative title overlays do not intercept the event button or duplicate accessibility speech");
     assert.deepEqual(geometry.independentLaneTitles.map(item=>[item.seq,item.state]),[
-      [103,"clipped"],[104,"clipped"],[201,"visible"],[202,"visible"],[203,"clipped"]
-    ],"Only titles in the initial horizontal viewport are eligible for folding");
+      [103,"clipped"],[104,"clipped"],[201,"clipped"],[202,"clipped"],[203,"clipped"]
+    ],"Only titles in the initial horizontal viewport are eligible for folding: "+
+      JSON.stringify(geometry.independentLaneTitles));
     await frame.evaluate(()=>{
       const left=document.querySelector("#timelineLeft"),right=document.querySelector("#timelineRight");
-      left.scrollLeft=Math.max(0,left.scrollLeft-176);right.scrollLeft=176;
+      left.scrollLeft=Math.max(0,left.scrollWidth-left.clientWidth-176);right.scrollLeft=176;
     });
     await frame.waitForFunction(()=>[103,104,203].every(seq=>
       document.querySelector(`[data-event-seq="${seq}"] .timelineTitle`).dataset.titleFoldState==="visible"));
@@ -264,15 +289,18 @@ async function doubleTapTimelineAxis(frame){
     assert.ok(geometry.dateDeadline.text.includes("2026-10-22")&&
       geometry.dateDeadline.text.includes("无具体时刻"));
     assert.equal(geometry.dateDeadline.date,"2026-10-22");
-    assert.equal(geometry.dateDeadline.inWing,false,"Date Deadline is outside time lanes");
+    assert.equal(geometry.dateDeadline.inWing,true,
+      "Date-only Deadline keeps the frozen Native 23:59 anchor as well as its date-band chip");
     assert.equal(geometry.left.laneCount,12,"Date Deadline lane 99 does not inflate left lanes");
     assert.equal(geometry.right.laneCount,12);
+    assert.equal(geometry.left.scrollLeft,0,
+      "Frozen Native 0.9.5 starts the left wing at the outer lane edge");
+    assert.equal(geometry.right.scrollLeft,0,
+      "Frozen Native 0.9.5 starts the right wing at lane zero");
     assert.ok(geometry.left.scrollWidth>geometry.left.clientWidth&&
       geometry.right.scrollWidth>geometry.right.clientWidth,"Both wings have independent overflow");
-    assert.ok(geometry.left.scrollLeft>0&&geometry.right.scrollLeft===0,
-      "Initial view anchors the left wing at the center and the right wing at its first lane");
-    assert.ok(Math.abs((geometry.left.laneZero.x+geometry.left.laneZero.width)-
-      (geometry.left.viewport.x+geometry.left.viewport.width))<1.1);
+    assert.ok(Math.abs(geometry.left.laneLast.x-geometry.left.viewport.x)<1.1,
+      "Leftmost lane begins at the outer edge of the left viewport");
     assert.ok(Math.abs(geometry.right.laneZero.x-geometry.right.viewport.x)<1.1);
     const changedScroll=await frame.evaluate(()=>{
       const left=document.querySelector("#timelineLeft"),right=document.querySelector("#timelineRight");
@@ -280,20 +308,22 @@ async function doubleTapTimelineAxis(frame){
       right.scrollLeft=right.scrollWidth;
       const rightEnd=right.scrollLeft;
       const leftAfterRight=left.scrollLeft;
-      left.scrollLeft=0;
-      return {leftStart,leftAfterRight,leftAfterOwn:left.scrollLeft,
+      left.scrollLeft=left.scrollWidth;
+      const leftEnd=left.scrollLeft;
+      return {leftStart,leftAfterRight,leftEnd,
         rightEnd,rightAfterLeft:right.scrollLeft};
     });
-    assert.ok(changedScroll.leftStart>0&&changedScroll.rightEnd>0);
+    assert.equal(changedScroll.leftStart,0);
+    assert.ok(changedScroll.leftEnd>0&&changedScroll.rightEnd>0);
     assert.equal(changedScroll.leftAfterRight,changedScroll.leftStart,
       "Right wing scrolling must not move the left wing");
-    assert.equal(changedScroll.leftAfterOwn,0);
     assert.equal(changedScroll.rightAfterLeft,changedScroll.rightEnd,
       "Left wing scrolling must not move the right wing");
     const clippedAfterWingScroll=()=>[101,301,302,303].every(seq=>
       document.querySelector(`[data-event-seq="${seq}"] .timelineTitle`).dataset.titleFoldState==="clipped")&&
-      [201,202,203].every(seq=>document.querySelector(`[data-event-seq="${seq}"] .timelineTitle`)
-        .dataset.titleFoldState==="clipped");
+      [201,202].every(seq=>document.querySelector(`[data-event-seq="${seq}"] .timelineTitle`)
+        .dataset.titleFoldState==="visible")&&
+      document.querySelector('[data-event-seq="203"] .timelineTitle').dataset.titleFoldState==="clipped";
     await frame.waitForFunction(clippedAfterWingScroll,{timeout:8000}).catch(async error=>{
       const actual=await frame.evaluate(()=>[101,301,302,303,201,202,203].map(seq=>({seq,
         state:document.querySelector(`[data-event-seq="${seq}"] .timelineTitle`).dataset.titleFoldState,
@@ -389,10 +419,11 @@ async function doubleTapTimelineAxis(frame){
     await frame.evaluate(()=>{document.querySelector("#timelineRight").scrollLeft=0});
     await frame.waitForFunction(()=>document.querySelector('[data-event-seq="101"] .timelineTitle')
       .dataset.titleFoldState==="visible");
-    for(let i=0;i<8;i++)await frame.click('[data-action="panTimeline"][data-delta-minutes="180"]');
+    for(let i=0;i<8;i++)
+      await frame.$eval('[data-action="panTimeline"][data-delta-minutes="180"]',button=>button.click());
     await frame.waitForFunction(()=>!document.querySelector('[data-event-seq="101"]'),
       {timeout:8000});
-    await frame.click('[data-action="today"]');
+    await frame.$eval('[data-action="today"]',button=>button.click());
     await frame.waitForFunction(()=>document.querySelector('[data-event-seq="101"] .timelineTitle')
       ?.dataset.titleFoldState==="visible",{timeout:8000}).catch(async error=>{
       const actual=await frame.evaluate(()=>({anchor:window.PowerCalSkin?.state?.timeline?.anchorMillis,
@@ -402,7 +433,8 @@ async function doubleTapTimelineAxis(frame){
         timeRange:document.querySelector("#timeRangeLabel").textContent}));
       console.error("Title state after Today",JSON.stringify(actual));throw error;
     });
-    assert.equal(geometry.events.length,30,"All mock events, including edge points and date Deadline, remain present");
+    assert.equal(geometry.events.length,31,
+      "Mock events retain the Native date-band chip and its independent 23:59 point target");
     for(const event of geometry.events){
       assert.ok(event.aria&&event.title&&event.aria.includes(event.title),
         "Every complete event title remains in Accessibility");
@@ -447,7 +479,17 @@ async function doubleTapTimelineAxis(frame){
     await page.waitForFunction(()=>document.querySelector("#bridgeLog").textContent
       .includes("timeline.move → staged"));
     await frame.waitForFunction(()=>!document.querySelector("#skinSheet").hidden&&
-      document.querySelector("#sheetTitle").textContent==="待处理草稿");
+      document.querySelector("#sheetTitle").textContent==="待处理"&&
+      !!document.querySelector('#sheetFields [data-field="startText"]'),{timeout:8000})
+      .catch(async error=>{
+        console.error("Timeline move deck state",await frame.evaluate(()=>({
+          title:document.querySelector("#sheetTitle")?.textContent,
+          visible:!document.querySelector("#skinSheet")?.hidden,
+          expanded:document.querySelector(".deck-card-surface")?.dataset.expanded,
+          fields:[...document.querySelectorAll("#sheetFields [data-field]")].map(input=>input.dataset.field)
+        })));
+        throw error;
+      });
     const stagedStart=await frame.$eval('#sheetFields [data-field="startText"]',input=>input.value);
     assert.notEqual(stagedStart,"2026-10-22 09:00","Drag moves the preview draft's start field");
     assert.ok((await frame.$eval("#timelineMoveStatus",element=>element.textContent))
@@ -542,16 +584,15 @@ async function doubleTapTimelineAxis(frame){
     await frame.waitForSelector("#timelineCreateDialog[open]");
     await frame.click('[data-timeline-create-kind="ACTIVITY"]');
     await frame.waitForFunction(()=>!document.querySelector("#skinSheet").hidden &&
-      document.querySelector("#sheetTitle").textContent==="待处理草稿");
+      document.querySelector("#sheetTitle").textContent==="新建事件");
     await page.waitForFunction(()=>document.querySelector("#bridgeLog").textContent
       .includes("deck.create · ACTIVITY → created"));
     await frame.$eval('#sheetFields [data-field="title"]',input=>{
       input.value="Web 草稿事务";
       input.dispatchEvent(new Event("change",{bubbles:true}));
     });
-    await frame.click('#sheetActions [data-do="flush"]');
-    await frame.waitForFunction(()=>
-      document.querySelector("#sheetStatus").textContent.includes("修改已暂存"));
+    assert.equal(await frame.$('#sheetActions [data-do="flush"]'),null,
+      "Native-equivalent deck stages on close rather than showing a manual stage action");
     await frame.click("#sheetClose");
     await frame.waitForFunction(()=>document.querySelector("#skinSheet").hidden);
     await page.waitForFunction(()=>document.querySelector("#bridgeLog").textContent
@@ -574,11 +615,15 @@ async function doubleTapTimelineAxis(frame){
     });
     await frame.waitForFunction(()=>document.querySelectorAll('.sheet-cards [data-draft-id="7202"]').length===1);
     await frame.click('.sheet-cards [data-draft-id="7202"]');
+    await frame.waitForSelector(".deck-summary");
+    await frame.click(".deck-summary");
     await frame.waitForFunction(()=>document.querySelector('#sheetFields [data-field="title"]')?.value===
       "示例草稿二");
     await frame.click('[data-do="jump"][data-steps="1"]');
+    await frame.waitForSelector(".deck-summary");
+    await frame.click(".deck-summary");
     await frame.waitForFunction(()=>document.querySelector('#sheetFields [data-field="title"]')?.value===
-      "示例草稿三"&&document.querySelector(".sheet-deck-navigation span")?.textContent==="3 / 6");
+      "示例草稿三"&&document.querySelector(".sheet-deck-navigation span")?.textContent?.startsWith("3 / 6"));
     for(const name of ["deck.search","deck.proposeReplace","deck.select","deck.jump"])
       assert.ok(await page.evaluate(value=>document.querySelector("#bridgeLog").textContent
         .includes("预览编辑命令 "+value),name),name+" runs through the Studio Preview Host Mock");
@@ -591,7 +636,7 @@ async function doubleTapTimelineAxis(frame){
       await frame.waitForSelector("#timelineCreateDialog[open]");
       await frame.click('[data-timeline-create-kind="'+kind+'"]');
       await frame.waitForFunction(()=>!document.querySelector("#skinSheet").hidden &&
-        document.querySelector("#sheetTitle").textContent==="待处理草稿");
+        document.querySelector("#sheetTitle").textContent==="新建事件");
       assert.equal(await frame.$(".deck-search"),null,
         kind+" transient new-event session must not expose persisted-deck search");
       await page.waitForFunction(value=>document.querySelector("#bridgeLog").textContent
@@ -617,7 +662,9 @@ async function doubleTapTimelineAxis(frame){
     });
     await frame.click('.clear-tabbar [data-action="month"]');
     await frame.waitForFunction(()=>!document.querySelector("#monthPage").hidden);
-    await frame.click('#monthPage [data-local="options"]');
+    // This compatibility trigger is intentionally aria-hidden and cannot be a user target.
+    // Invoke it at DOM level only to verify an unbound legacy action remains inert.
+    await frame.$eval('#monthPage [data-local="options"]',button=>button.click());
     await frame.waitForFunction(()=>!document.querySelector("#extraOptions").hidden);
     const futureSelector='#optionGroups [data-option-id="calendar.import.future"]';
     await frame.waitForSelector(futureSelector);
@@ -716,6 +763,8 @@ async function doubleTapTimelineAxis(frame){
     console.log("Existing action button icon binding works");
 
     await page.click("#interactMode");
+    await frame.click('.clear-tabbar [data-action="timeline"]');
+    await frame.waitForFunction(()=>document.body.dataset.page==="timeline");
     await frame.click('.clear-head [data-action="memo"]');
     await frame.waitForFunction(()=>!document.querySelector("#memoPage").hidden);
     let before=await frame.evaluate(()=>document.querySelectorAll(".memo-row").length);
@@ -784,7 +833,10 @@ async function doubleTapTimelineAxis(frame){
     await frame.waitForFunction(()=>document.querySelector("#chatMessages").textContent
       .includes("没有写入任何真实日历数据"));
     console.log("AI proposal card / explicit mock Host review PASS",review);
-    await frame.$eval("#chatInput",e=>{e.value="给我看看今日安排"});
+    await frame.$eval("#chatInput",e=>{
+      e.value="给我看看今日安排";
+      e.dispatchEvent(new Event("input",{bubbles:true}));
+    });
     await frame.click("#chatSend");
     await frame.waitForFunction(()=>document.querySelector("#chatMessages").textContent.includes("给我看看今日安排"));
     await frame.click('.clear-tabbar [data-action="timeline"]');
@@ -832,7 +884,8 @@ async function doubleTapTimelineAxis(frame){
       '\n@font-face{font-family:"ParityProbe";src:url("/web/fonts/Probe.WOFF2") format("woff2")}\n' +
       '#fontProbe{font-family:"ParityProbe"}\n').toString("base64");
     parityPackage.files["web/app.js"]=Buffer.from(previewJs+
-      '\nwindow.__parityConnectProbe=fetch("/api/template-v3").then(()=>"allowed").catch(()=>"blocked");\n'
+      '\nwindow.__parityConnectProbe=fetch("/api/template-v3").then(()=>"allowed").catch(()=>"blocked");'+
+      'document.addEventListener("DOMContentLoaded",()=>{document.getElementById("missingAssetProbe").src="/assets/missing.png"});\n'
     ).toString("base64");
     const inlineProbe='<script>document.documentElement.dataset.inlineProbe="executed"</script>';
     assert.ok(previewHtml.includes("</head>"),"Preview fixture has no head closing tag");
@@ -840,7 +893,7 @@ async function doubleTapTimelineAxis(frame){
       .replace("</body>",'<span id="fontProbe">Font probe</span>'+
       '<img id="rootAssetProbe" src="/assets/powercal-e2e-pixel.png">'+
       '<img id="queryAssetProbe" src="/assets/powercal-e2e-pixel.png?cache=1">'+
-      '<img id="missingAssetProbe" src="/assets/missing.png"></body>')).toString("base64");
+      '<img id="missingAssetProbe"></body>')).toString("base64");
     const parityResponses=new Map();
     const parityRequests=[];
     const parityFailures=[];

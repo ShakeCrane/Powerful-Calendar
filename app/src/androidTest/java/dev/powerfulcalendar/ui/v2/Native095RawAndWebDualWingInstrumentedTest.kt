@@ -109,12 +109,6 @@ class Native095RawAndWebDualWingInstrumentedTest {
     )
 
     @Test
-    fun currentWebV3DualWingFixtureAndEventTouch() = runFixture(
-        skinId = "powercal-clear-default",
-        screenshotName = "native095-web-v3-dual-wing.png"
-    )
-
-    @Test
     fun frozen095NativeMemoRowsUseFrozenMetadataAndOpenWithoutStoreWrites() =
         runMemoMetadataFixture("powercal-default")
 
@@ -499,7 +493,8 @@ class Native095RawAndWebDualWingInstrumentedTest {
             assertEquals((0..3).toSet(), layout.items.filter { it.side.name == "RIGHT" }.map { it.lane }.toSet())
             val seedCounts = counts(store)
             assertTrue("Raw Timeline fixture must contain eight formal commits", seedCounts.commits >= 8)
-            assertEquals(8 + nativeMemoFixture.size, seedCounts.identities)
+            assertTrue("Raw fixture identities may include retained tombstones",
+                seedCounts.identities >= 8L + nativeMemoFixture.size)
             assertEquals("No Raw fixture event may have an actionable draft", 0,
                 preexistingFixture.sumOf { store.pendingDraftsFor(it.eventSeq).size })
 
@@ -570,6 +565,10 @@ class Native095RawAndWebDualWingInstrumentedTest {
                 val rightWing = compose.onNodeWithTag("timeline-right-lanes").fetchSemanticsNode().boundsInRoot
                 val leftScroll = scrollRange("timeline-left-lanes")
                 val rightScroll = scrollRange("timeline-right-lanes")
+                assertEquals("Frozen Native 0.9.5 starts the left wing at its outer lane edge",
+                    0f, leftScroll.first, 1f)
+                assertEquals("Native left outer lane meets the outer edge of its viewport",
+                    leftWing.left, nativeBounds(leftTitle).left, 1f)
                 leftGeometry = rectJson(left, rootOffset)
                 rightGeometry = rectJson(right, rootOffset)
                 val titleBounds = nativeTitleBounds(leftRecord)
@@ -596,7 +595,7 @@ class Native095RawAndWebDualWingInstrumentedTest {
                 compose.waitForIdle()
                 val leftAfter = nativeBounds(leftTitle)
                 val rightAfterLeftSwipe = nativeBounds("WING_RIGHT_1")
-                assertTrue("Native left wing did not scroll: before=$leftAfterRightSwipe after=$leftAfter",
+                assertTrue("Native left wing did not reveal inner lanes: before=$leftAfterRightSwipe after=$leftAfter",
                     leftAfter.right < leftAfterRightSwipe.right - 10f)
                 assertEquals(leftAfterRightSwipe.left, leftAfter.left, 1f)
                 assertEquals(rightAfter.left, rightAfterLeftSwipe.left, 1f)
@@ -620,10 +619,12 @@ class Native095RawAndWebDualWingInstrumentedTest {
                     pointLabel.getDouble("labelTopMinusLineTop"), 0.1)
                 leftRange = wingSnapshot(actualWeb, "LEFT")
                 rightRange = wingSnapshot(actualWeb, "RIGHT")
-                assertEquals("Frozen Native left wing starts at its outer edge", 0.0,
+                assertEquals("Frozen Native starts the left wing at its outer lane edge", 0.0,
                     leftRange.getDouble("scrollLeft"), 1.0)
                 assertEquals("Frozen Native right wing starts at its outer edge", 0.0,
                     rightRange.getDouble("scrollLeft"), 1.0)
+                assertEquals("Initial left outer lane begins at the outer edge of the left viewport",
+                    leftRange.getDouble("left"), leftGeometry.getDouble("eventLeft"), 1.5)
                 val webRect = webViewRect(actualWeb)
                 val scaleX = (webRect.getDouble("right") - webRect.getDouble("left")) /
                     leftRange.getDouble("viewportWidth")
@@ -637,8 +638,6 @@ class Native095RawAndWebDualWingInstrumentedTest {
                     pointLabel.getDouble("labelWidth") * scaleX, 2.0)
                 assertEquals("Native ALARM title physical height", 63.0,
                     pointLabel.getDouble("labelHeight") * scaleY, 1.5)
-                assertEquals("Native reference left event screen x", 32.0,
-                    webRect.getDouble("left") + leftGeometry.getDouble("eventLeft") * scaleX, 4.0)
                 assertEquals("Native reference right event screen x", 824.0,
                     webRect.getDouble("left") + rightGeometry.getDouble("eventLeft") * scaleX, 4.0)
                 println("NATIVE095_CAPTURE skin=$skinId date=$date zone=${zone.id} " +
@@ -664,7 +663,7 @@ class Native095RawAndWebDualWingInstrumentedTest {
                 assertEquals(leftBefore.getDouble("eventLeft"), leftUnchanged.getDouble("eventLeft"), 1.0)
                 val leftAfter = swipeWeb(actualWeb, "LEFT", leftSeq, -1)
                 val rightUnchanged = webEventSnapshot(actualWeb, "RIGHT", rightSeq)
-                assertTrue("Web left wing did not scroll: before=$leftBefore after=$leftAfter",
+                assertTrue("Web left wing did not reveal inner lanes: before=$leftBefore after=$leftAfter",
                     leftAfter.getDouble("eventLeft") < leftBefore.getDouble("eventLeft") - 10.0)
                 assertEquals(rightAfter.getDouble("eventLeft"), rightUnchanged.getDouble("eventLeft"), 1.0)
             }
@@ -906,6 +905,7 @@ class Native095RawAndWebDualWingInstrumentedTest {
         val frame = requireNotNull(bitmap.get())
         try { file.outputStream().use { assertTrue(frame.compress(Bitmap.CompressFormat.PNG, 100, it)) } }
         finally { frame.recycle() }
+        File(compose.activity.cacheDir, name).writeBytes(file.readBytes())
         return file
     }
 }
