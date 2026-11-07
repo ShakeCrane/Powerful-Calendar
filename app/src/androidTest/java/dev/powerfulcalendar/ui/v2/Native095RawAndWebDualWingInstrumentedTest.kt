@@ -1017,12 +1017,7 @@ class Native095RawAndWebDualWingInstrumentedTest {
     }
 
     private fun waitForJs(web: WebView, expression: String) {
-        val deadline = SystemClock.uptimeMillis() + 30_000
-        while (SystemClock.uptimeMillis() < deadline) {
-            if (evaluate(web, expression) == "true") return
-            Thread.sleep(100)
-        }
-        throw AssertionError("Web condition timed out: $expression")
+        compose.waitUntil(30_000) { evaluate(web, expression) == "true" }
     }
 
     private fun webEventSnapshot(web: WebView, side: String, eventSeq: Long) = evaluateObject(web, """(() => {
@@ -1181,4 +1176,5 @@ class Native095RawAndWebDualWingInstrumentedTest {
         File(compose.activity.cacheDir, name).writeBytes(file.readBytes())
         return file
     }
+
 }

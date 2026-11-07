@@ -151,6 +151,30 @@ class WebAiBatchProjectionTest {
     }
 
     @Test
+    fun activeProjectionExposesOnlyTheScopedRemainingCount() {
+        val session = AiBatchSessionV1(
+            sessionId = "private-session",
+            lockEpoch = 991,
+            scope = setOf(8101, 8102, 8103),
+            allowedOperations = setOf(DraftOperationV1.CREATE),
+            state = AiBatchStateV1.RUNNING,
+            startedAtMillis = 10,
+            updatedAtMillis = 20
+        )
+
+        val projected = WebAiBatchProjection.project(
+            session, null, null, null, null, remainingCount = 2
+        )
+
+        assertEquals(3, projected.getInt("scopeCount"))
+        assertEquals(2, projected.getInt("remainingCount"))
+        assertFalse(projected.toString().contains("private-session"))
+        assertFalse(projected.toString().contains("8101"))
+        assertFalse(projected.toString().contains("8102"))
+        assertFalse(projected.toString().contains("8103"))
+    }
+
+    @Test
     fun stuckRecoveryIsOnlyProjectedForTimedOutCancellationAndHidesUnknownCounts() {
         val running = AiBatchSessionV1(
             sessionId = "running-private", lockEpoch = 7, scope = emptySet(),

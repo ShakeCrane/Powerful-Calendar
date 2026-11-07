@@ -112,35 +112,42 @@ function row(form,key,label,kind="text",choices=null){
   control.addEventListener("change",()=>patch(key,String(control.value)));
   container.append(control);return container;
 }
-function renderForm(form,occurrenceOnly=false){
-  fields.append(row(form,"title","标题"));
-  if(!occurrenceOnly)fields.append(row(form,"kind","事件类型",null,
-    [["ALARM","闹钟"],["ACTIVITY","活动"],["DEADLINE","截止"],["MEMO","备忘"]]));
+function renderForm(form,occurrenceOnly=false,nativeLockedDeck=false){
+  const appendRow=(...args)=>{
+    const item=row(...args);
+    if(nativeLockedDeck)item.classList.add("deck-native-095-locked-field");
+    fields.append(item);
+  };
+  appendRow(form,"title","标题");
+  if(!occurrenceOnly&&!nativeLockedDeck)appendRow(form,"kind","事件类型",null,
+    [["ALARM","闹钟"],["ACTIVITY","活动"],["DEADLINE","截止"],["MEMO","备忘"]]);
+  if(nativeLockedDeck&&form.kind==="MEMO")
+    fields.append(el("p","备忘可完全不指定日期；也可以填连续的自然日区间。","deck-native-095-memo-hint"));
   if(["ACTIVITY","ALARM","MEMO"].includes(form.kind))
-    fields.append(row(form,"startText",form.kind==="MEMO"?"开始日期":"开始时间"));
+    appendRow(form,"startText",form.kind==="MEMO"?"开始日期（可选，yyyy-MM-dd）":"开始时间");
   if(["ACTIVITY","DEADLINE","MEMO"].includes(form.kind))
-    fields.append(row(form,"endText",form.kind==="DEADLINE"?
-      "截止日期或时刻":form.kind==="MEMO"?"结束日期":"结束时间"));
+    appendRow(form,"endText",form.kind==="DEADLINE"?
+      "截止日期或时刻":form.kind==="MEMO"?"结束日期（可选，含当天）":"结束时间");
   if(occurrenceOnly){
     fields.append(el("p","仅本次可修改标题和时间；地点、备注、提醒与重复规则保持不变。","sheet-note"));
     return;
   }
-  fields.append(row(form,"location","地点"));
-  fields.append(row(form,"notes","备注","notes"));
-  fields.append(row(form,"enabled","启用",null,[["true","开启"],["false","关闭"]]));
-  if(form.kind!=="MEMO")fields.append(row(form,"trackingEnabled",
-    "跟踪完成状态",null,[["true","开启"],["false","关闭"]]));
-  fields.append(row(form,"reminderMinutes","提前提醒（分钟，-1关闭）","number"));
-  fields.append(row(form,"reminderMethod","提醒方式",null,
-    [["MESSAGE","消息"],["ALARM","闹钟"]]));
-  fields.append(row(form,"reminderTiming","提醒基准",null,
-    [["OFFSET","相对时间"],["DAY_START","当天开始"]]));
-  fields.append(row(form,"recurrenceFreq","重复",null,
-    [["NONE","不重复"],["DAILY","每天"],["WEEKLY","每周"],["MONTHLY","每月"]]));
+  appendRow(form,"location","地点（可选）");
+  appendRow(form,"notes","备注","notes");
+  appendRow(form,"enabled","启用",null,[["true","开启"],["false","关闭"]]);
+  if(form.kind!=="MEMO")appendRow(form,"trackingEnabled",
+    "跟踪完成状态",null,[["true","开启"],["false","关闭"]]);
+  appendRow(form,"reminderMinutes","提前提醒（分钟，-1关闭）","number");
+  appendRow(form,"reminderMethod","提醒方式",null,
+    [["MESSAGE","消息"],["ALARM","闹钟"]]);
+  appendRow(form,"reminderTiming","提醒基准",null,
+    [["OFFSET","相对时间"],["DAY_START","当天开始"]]);
+  appendRow(form,"recurrenceFreq","重复",null,
+    [["NONE","不重复"],["DAILY","每天"],["WEEKLY","每周"],["MONTHLY","每月"]]);
   if(form.recurrenceFreq!=="NONE"){
-    fields.append(row(form,"recurrenceInterval","重复间隔","number"));
-    fields.append(row(form,"recurrenceFrom","开始生效日期 YYYY-MM-DD"));
-    fields.append(row(form,"recurrenceUntil","结束生效日期 YYYY-MM-DD"));
+    appendRow(form,"recurrenceInterval","重复间隔","number");
+    appendRow(form,"recurrenceFrom","开始生效日期 YYYY-MM-DD");
+    appendRow(form,"recurrenceUntil","结束生效日期 YYYY-MM-DD");
   }
   fields.append(el("p","来源 "+(form.source||"—")+" · 时区 "+(form.zoneId||"—"),"sheet-note"));
 }
@@ -154,7 +161,7 @@ function renderDeckHeader(deck,form){
   const sequence=Number(card?.eventSeq);
   header.append(el("span",Number.isSafeInteger(sequence)&&sequence>0?
     "#"+String(sequence).padStart(4,"0"):(deck.transient?"新建":"草稿"),"deck-card-sequence"));
-  header.append(el("span",deckKindLabel(form.kind),"deck-card-kind"));
+  header.append(el("span",deckKindLabel(form.kind)+(deck.aiLocked===true?" ▾":""),"deck-card-kind"));
   const operation=String(card?.operationLabel||({CREATE:"新建",REPLACE:"修改",CONVERT:"类型转换",DELETE:"删除"}[card?.operation])||
     (deck.transient?"新建":"待处理"));
   header.append(el("span",operation,"deck-card-operation"));
@@ -166,7 +173,8 @@ function renderDeckHeader(deck,form){
 }
 function renderDeckSummary(form,deck){
   const summary=button("","expandDeck","deck-summary");
-  summary.setAttribute("aria-label","轻点卡片，展开完整编辑");
+  summary.setAttribute("aria-label",deck.aiLocked===true?
+    "卡组只读，轻点卡片可浏览详情":"轻点卡片，展开完整编辑");
   summary.append(el("strong",form.title?.trim()||"给这段时间起个名字","deck-summary-title"));
   const time=el("span",null,"deck-summary-time "+String(form.kind||"").toLowerCase());
   const timeText=form.kind==="ALARM"?form.startText:
@@ -202,9 +210,11 @@ function render(){
     mode="";identity="";fingerprint="";visible(false);return
   }
   visible(true);
+  sheet.dataset.aiLocked=String(next==="deck"&&deck.aiLocked===true);
   const form=next==="event"?editor.form:deck.form;
   const deckView=next==="deck"?{
     query:deck.searchQuery,cards:(deck.cards||[]).map(card=>[card.draftId,card.draftVersion,card.title]),
+    aiLocked:deck.aiLocked===true,busy:deck.busy===true,
     formal:(deck.formalMatches||[]).map(item=>[item.eventSeq,item.revision]),
     conflict:deck.conflict,restore:deck.restore,
     retired:(deck.retiredResults||[]).map(item=>[item.eventSeq,item.revision,item.title]),
@@ -215,6 +225,11 @@ function render(){
     truncated:deck.truncated,transient:deck.transient===true
   }:null;
   const current=JSON.stringify({form,deck:deckView,deckExpanded:expandedDeck,scope:editor.recurrenceScope,
+    aiBatch:next==="deck"&&deck.aiLocked===true?{
+      phase:state.aiBatch?.phase,active:state.aiBatch?.active===true,
+      canCancel:state.aiBatch?.canCancel===true,scopeCount:state.aiBatch?.scopeCount,
+      remainingCount:state.aiBatch?.remainingCount,progress:state.aiBatch?.progress
+    }:null,
     requiresScope:editor.requiresRecurrenceScope,dirty:editor.dirty,
     awaitingConfirmation:editor.awaitingConfirmation});
   const focused=!!document.activeElement?.matches?.(
@@ -231,11 +246,22 @@ function render(){
   sheet.setAttribute("aria-label",mode==="event"?"事件编辑器":"待处理草稿卡组");
   $("sheetClose").textContent=mode==="deck"?"×":"‹";
   $("sheetClose").setAttribute("aria-label",mode==="deck"?"保存并退出待处理":"保存检查点并退出");
+  sheet.querySelector(".deck-ai-stop-header")?.remove();
+  if(mode==="deck"&&deck.aiLocked===true&&state.aiBatch?.active===true){
+    const stop=button("AI 进行中 · 停止","cancelAiBatch","deck-ai-stop-header");
+    stop.dataset.action="cancelAiBatch";
+    stop.disabled=state.aiBatch.canCancel!==true;
+    stop.setAttribute("aria-label","AI 进行中，停止批次");
+    $("sheetClose").before(stop);
+  }
   $("sheetTitle").textContent=mode==="event"?"编辑事件":deck.transient===true?"新建事件":"待处理";
   const deckCount=Number.isFinite(Number(deck.cardCount))?Number(deck.cardCount):(deck.cards||[]).length;
+  const emptyDeck=mode==="deck"&&deck.transient!==true&&deck.currentId==null&&
+    !deck.conflict&&!deck.restore&&!deck.completion&&deck.aiLocked!==true;
   $("sheetSubtitle").textContent=mode==="event"?
     "#"+(editor.eventSeq||"?")+" · "+(form?.kind||""):
     deck.transient===true?"只在修改后暂存":
+    deck.aiLocked===true?"只读":
     deck.completion?"本次完成 · 发布 "+Number(deck.completion.published||0)+
       " · 丢弃 "+Number(deck.completion.discarded||0):
       String(deckCount)+" 张";
@@ -275,6 +301,28 @@ function render(){
   }else{
     const transient=deck.transient===true;
     if(!transient){
+      if(deck.aiLocked===true){
+        const batch=state.aiBatch||{};
+        const authorized=Math.max(0,Number(batch.scopeCount)||0);
+        const remaining=Math.max(0,Math.min(authorized,Number(batch.remainingCount)||0));
+        const banner=el("section",null,"deck-ai-progress");
+        banner.setAttribute("role","status");
+        banner.setAttribute("aria-live","polite");
+        const line=el("div",null,"deck-ai-progress-line");
+        line.append(el("span","✦","deck-ai-progress-icon"));
+        line.append(el("span",`本次授权 ${authorized} 张 · 仍待处理 ${remaining} 张`));
+        if(batch.active===true){
+          const stop=button("停止","cancelAiBatch","deck-ai-progress-stop");
+          stop.dataset.action="cancelAiBatch";
+          stop.disabled=batch.canCancel!==true;
+          line.append(stop);
+        }
+        const progress=el("div",null,"deck-ai-progress-track");
+        progress.setAttribute("aria-hidden","true");
+        if(state.reducedMotion===true)progress.dataset.reducedMotion="true";
+        banner.append(line,progress,el("p","期间卡组为只读；已提交的结果会保留，未处理的卡片继续等待你。"));
+        fields.append(banner);
+      }
       const search=el("form",null,"deck-search");
       search.setAttribute("role","search");
       const searchLabel=el("label","搜索草稿和正式事件","sheet-label");
@@ -332,9 +380,22 @@ function render(){
     if(form&&!deck.conflict&&!deck.restore){
       fields.append(renderDeckHeader(deck,form));
       if(!deck.transient&&!expandedDeck)fields.append(renderDeckSummary(form,deck));
-      else renderForm(form);
+      else {
+        renderForm(form,false,deck.aiLocked===true);
+        if(deck.aiLocked===true||deck.busy===true){
+          fields.querySelectorAll(".sheet-row input,.sheet-row textarea").forEach(control=>control.readOnly=true);
+          fields.querySelectorAll(".sheet-row select").forEach(control=>control.disabled=true);
+        }
+      }
     }
-    else if(!transient&&deck.currentId==null&&!deck.conflict&&!deck.restore){
+    else if(emptyDeck){
+      const empty=el("section",null,"deck-empty-state");
+      empty.setAttribute("aria-label","没有待处理卡片");
+      empty.append(el("h3","没有待处理卡片"));
+      empty.append(el("p","所有草稿都已处理。新的自然语言、截图或 AI 建议会重新出现在这里。"));
+      empty.append(button("返回时间轴","close","deck-empty-return"));
+      fields.append(empty);
+    }else if(!transient&&deck.currentId==null&&!deck.conflict&&!deck.restore){
       const completion=deck.completion;
       const status=el("section",null,"deck-review-snapshot deck-completion");
       status.setAttribute("aria-label",completion?"本次草稿处理结果":"草稿卡组状态");
@@ -415,7 +476,7 @@ function render(){
       const keep=actions.lastElementChild;keep.dataset.target=JSON.stringify(args);
     }
 
-    if(!deck.conflict&&!deck.restore&&!transient&&Number(deck.cardCount)>1){
+    if(!deck.conflict&&!deck.restore&&!transient&&(deck.currentId!=null||Number(deck.cardCount)>1)){
       const paging=el("nav",null,"sheet-deck-navigation");
       paging.setAttribute("aria-label","草稿导航");
       const previous=button("上一张","jump","sheet-secondary");
@@ -430,24 +491,32 @@ function render(){
     }
     if(!deck.conflict&&!deck.restore){
       if(deck.currentId!=null){
-        actions.append(button("丢弃草稿","discard","sheet-danger"));
+        const discard=button("丢弃","discard","sheet-danger");
+        discard.disabled=deck.aiLocked===true||deck.busy===true;
+        actions.append(discard);
       }
-      if(deck.lastDiscardId!=null)actions.append(button("撤销丢弃","undo","sheet-secondary"));
-      actions.append(button("完成并退出","close","sheet-secondary"));
+      if(deck.lastDiscardId!=null){
+        const undo=button("撤销丢弃","undo","sheet-secondary");
+        undo.disabled=deck.aiLocked===true||deck.busy===true;
+        actions.append(undo);
+      }
+      if(!emptyDeck)actions.append(button("完成并退出","close","sheet-secondary"));
     }else actions.append(button("关闭","close","sheet-secondary"));
   }
   if(mode==="deck"){
     const search=fields.querySelector(".deck-search");
+    const aiProgress=fields.querySelector(".deck-ai-progress");
     const searchMode=!!(deck.searchQuery||"").trim();
     const searchResults=searchMode?
       Array.from(fields.querySelectorAll(".deck-formal-results,.sheet-cards")):[];
     const content=el("div",null,"deck-card-content "+(expandedDeck?"is-expanded":"is-collapsed"));
     for(const child of Array.from(fields.children))
-      if(child!==search&&!searchResults.includes(child))content.append(child);
+      if(child!==search&&child!==aiProgress&&!searchResults.includes(child))content.append(child);
     const surface=el("div",null,"deck-card-surface");
     surface.dataset.stackDepth=String(Math.max(0,Math.min(2,deckCount-1)));
     surface.dataset.expanded=String(expandedDeck||deck.transient===true);
     surface.dataset.aiLocked=String(deck.aiLocked===true);
+    surface.dataset.empty=String(emptyDeck);
     if(deck.transient!==true&&!searchMode)
       content.querySelectorAll(".sheet-cards").forEach(node=>node.hidden=true);
     surface.append(content);
@@ -455,6 +524,7 @@ function render(){
     surface.append(actions);
     const stage=el("div",null,"deck-stage");stage.append(surface);
     fields.replaceChildren();
+    if(aiProgress)fields.append(aiProgress);
     if(search)fields.append(search);
     searchResults.forEach(result=>fields.append(result));
     fields.append(stage);
@@ -651,7 +721,8 @@ fields.addEventListener("click",event=>{
   if(b.dataset.do==="expandDeck"||b.dataset.do==="collapseDeck"){
     expandedDeck=b.dataset.do==="expandDeck";
     fingerprint="";render();
-  }else if(b.dataset.do==="select"&&b.dataset.draftId)
+  }else if(b.dataset.do==="close")void close();
+  else if(b.dataset.do==="select"&&b.dataset.draftId)
     void perform("deck.select",{draftId:Number(b.dataset.draftId)});
   else if(b.dataset.do==="retiredPage")
     void perform("deck.retired",{offset:Number(b.dataset.offset)});

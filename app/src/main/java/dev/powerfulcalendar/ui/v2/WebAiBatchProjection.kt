@@ -54,9 +54,14 @@ internal object WebAiBatchProjection {
         preparationMode: AiBatchModeV1?,
         reviewMode: AiBatchModeV1?,
         reviewCards: List<DraftReviewCardV1>?,
-        progress: WebAiBatchProgress?
+        progress: WebAiBatchProgress?,
+        remainingCount: Int? = null
     ): JSONObject {
         val active = session?.isActive == true
+        val scopeCount = session?.scope?.size ?: 0
+        val activeRemainingCount = if (active) {
+            (remainingCount ?: scopeCount).coerceIn(0, scopeCount)
+        } else 0
         val persistedReport = session?.terminalReport
         val reportMode = persistedReport?.mode?.name
         val currentProgress = progress?.takeIf {
@@ -87,7 +92,8 @@ internal object WebAiBatchProjection {
             .put("canCancel", session?.state == AiBatchStateV1.RUNNING)
             .put("canRelease", session?.canReleaseStuck == true)
             .put("mode", mode?.name ?: JSONObject.NULL)
-            .put("scopeCount", session?.scope?.size ?: 0)
+            .put("scopeCount", scopeCount)
+            .put("remainingCount", activeRemainingCount)
             .put("selectedCount", reviewCards?.size ?: 0)
             .put("operationCounts", reviewCards?.let(::operationCounts) ?: JSONObject())
             .put("containsDelete", reviewCards?.any {

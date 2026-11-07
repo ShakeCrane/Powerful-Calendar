@@ -2427,8 +2427,7 @@ fun PowerCalApp(
                     pendingFileReview == null && pendingImageReview == null) {
                     beginBatchConversation(action.mode)
                 }
-                WebSkinAction.CancelAiBatch -> if (page == Page.AI.name &&
-                    pendingWebAiProposalPublish == null && pendingFileReview == null &&
+                WebSkinAction.CancelAiBatch -> if (pendingWebAiProposalPublish == null && pendingFileReview == null &&
                     pendingImageReview == null) {
                     cancelAiBatchFromSurface()
                 }
@@ -2487,6 +2486,10 @@ fun PowerCalApp(
                 if (page == Page.AI.name) chatHistory else emptyList(),
                 if (page == Page.AI.name) chatHistoryWindowEndExclusive else 0
             )
+            val aiBatchRemainingCount = aiSession?.takeIf { it.isActive }?.let { session ->
+                val pendingDraftIds = draftReviewApi.snapshot.cards.mapTo(HashSet()) { it.draftId }
+                session.scope.count { it in pendingDraftIds }
+            }
             JSONObject().put("bridgeVersion", WebSkinBridgeRuntime.VERSION).put("page", page)
                 .put("hostNotice", message?.take(1_000) ?: JSONObject.NULL)
                 .put("hostDataReady", hostDataReady)
@@ -2509,7 +2512,8 @@ fun PowerCalApp(
                     preparationMode = pendingBatchMode,
                     reviewMode = confirmBatch?.mode,
                     reviewCards = confirmBatch?.cards,
-                    progress = webAiBatchProgress
+                    progress = webAiBatchProgress,
+                    remainingCount = aiBatchRemainingCount
                 ))
                 .put("chatAttachmentAvailable", canLaunchWebAiAttachmentPicker())
                 .put("chatAttachmentBusy", aiAttachmentPickerBusy ||

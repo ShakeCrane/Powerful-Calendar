@@ -21,6 +21,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -129,6 +130,78 @@ class DraftDeckSearchWebViewInstrumentedTest {
                 "title:document.querySelector('#sheetFields [data-field=title]')?.value})")
         }.getOrDefault("unavailable")
         throw AssertionError("WebView condition timed out: $expression; state=$diagnostic")
+    }
+
+    private fun evaluateObject(web: WebView, expression: String): JSONObject {
+        val encoded = evaluate(web, "JSON.stringify($expression)")
+        val decoded = JSONArray("[$encoded]").get(0)
+        if (decoded !is String || decoded == "null")
+            throw AssertionError("WebView did not return an object: $expression => $encoded")
+        return JSONObject(decoded)
+    }
+
+    private fun storeSnapshot(store: PowerStore): List<Any> = listOf(
+        store.draftCount(), store.pendingCount(), store.identityCount(), store.commitCount(),
+        store.all(), store.pendingDrafts()
+    )
+
+    /** The frozen APK predates the process registry; reset it only when present. */
+    private fun resetSkinRegistryIfPresent(context: Context) {
+        val registry = runCatching {
+            Class.forName("dev.powerfulcalendar.ui.v2.PowerCalSkinRegistry", false, context.classLoader)
+        }.getOrNull() ?: return
+        val reset = registry.methods.firstOrNull { it.name == "reset" && it.parameterCount == 0 } ?: return
+        val receiver = if (java.lang.reflect.Modifier.isStatic(reset.modifiers)) null else
+            runCatching { registry.getField("INSTANCE").get(null) }.getOrNull()
+        reset.invoke(receiver)
+    }
+
+    private fun tapWebTarget(web: WebView, selector: String) {
+        val target = evaluateObject(web, """(()=>{
+          const e=document.querySelector(${JSONObject.quote(selector)});if(!e)return {found:false};
+          const r=e.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2;
+          window.__n095TouchTrace=[];
+          for(const type of ['pointerdown','pointerup','touchstart','touchend','click'])
+            document.addEventListener(type,event=>{
+              const matched=event.target?.closest?.(${JSONObject.quote(selector)});
+              if(matched)window.__n095TouchTrace.push({type,trusted:event.isTrusted,tag:event.target?.tagName||''})
+            },true);
+          const hit=document.elementFromPoint(x,y);
+          return {found:true,x,y,cssWidth:innerWidth,cssHeight:innerHeight,disabled:e.disabled===true,
+            rect:[r.left,r.top,r.width,r.height],hit:hit?.tagName||null,
+            hitMatches:hit===e||hit?.closest?.(${JSONObject.quote(selector)})===e}
+        })()""")
+        assertTrue("Missing or disabled Android touch target $selector: $target",
+            target.optBoolean("found") && !target.optBoolean("disabled"))
+        val origin = IntArray(2)
+        val size = AtomicReference<Pair<Int, Int>>()
+        compose.runOnUiThread { web.getLocationOnScreen(origin); size.set(web.width to web.height) }
+        val (width, height) = requireNotNull(size.get())
+        val scaleX = width / target.getDouble("cssWidth")
+        val scaleY = height / target.getDouble("cssHeight")
+        assertTrue("Touch CSS scale mismatch: $scaleX/$scaleY", kotlin.math.abs(scaleX-scaleY) < 0.03)
+        val x = origin[0] + (target.getDouble("x") * scaleX).toFloat()
+        val y = origin[1] + (target.getDouble("y") * scaleY).toFloat()
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val downTime = SystemClock.uptimeMillis()
+        val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0).apply {
+            source = InputDevice.SOURCE_TOUCHSCREEN
+        }
+        val up = MotionEvent.obtain(downTime, downTime + 80, MotionEvent.ACTION_UP, x, y, 0).apply {
+            source = InputDevice.SOURCE_TOUCHSCREEN
+        }
+        try {
+            assertTrue("Touch down rejected for $selector", automation.injectInputEvent(down, true))
+            SystemClock.sleep(80)
+            assertTrue("Touch up rejected for $selector", automation.injectInputEvent(up, true))
+        } finally { down.recycle(); up.recycle() }
+        SystemClock.sleep(150)
+        val trace = evaluateObject(web, "({events:window.__n095TouchTrace||[],hit:${JSONObject.quote(selector)}})")
+        assertTrue("Touch did not produce a trusted click for $selector: target=$target trace=$trace",
+            trace.getJSONArray("events").let { events ->
+                (0 until events.length()).map { events.getJSONObject(it) }
+                    .any { it.optString("type") == "click" && it.optBoolean("trusted") }
+            })
     }
 
     private fun submitSearch(web: WebView, query: String) {
@@ -306,12 +379,441 @@ class DraftDeckSearchWebViewInstrumentedTest {
         return file
     }
 
+    private fun saveNativeDisplayScreenshot(name: String): File {
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        val bitmap = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
+        val file = File(requireNotNull(compose.activity.externalCacheDir), name)
+        try {
+            file.outputStream().use { assertTrue("Native screenshot must encode", bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
+        } finally { bitmap.recycle() }
+        return file
+    }
+
     private fun awaitNextWebViewFrame(web: WebView) {
         assertEquals("true", evaluate(web,
             "(()=>{window.__powerCalVisualTestReady=false;" +
                 "requestAnimationFrame(()=>requestAnimationFrame(()=>" +
                 "window.__powerCalVisualTestReady=true));return true})()"))
         awaitJs(web, "window.__powerCalVisualTestReady===true")
+    }
+
+    @Test
+    fun currentWebDraftDeckEmptyAndAiLockedStatesMatchFrozenNativeContract() {
+        val storage = compose.activity.applicationContext
+        val namespace = "n095-web-deck-empty-lock-${UUID.randomUUID()}"
+        val context = IsolatedAppContext(compose.activity, storage, namespace)
+        val databaseName = "deck.db"
+        val store = PowerStore(context, databaseName)
+        var fixtureDraftId: Long? = null
+        var aiSessionId: String? = null
+        var web: WebView? = null
+        val parityFailures = mutableListOf<String>()
+
+        try {
+            store.readableDatabase
+            assertTrue("The isolated Web fixture starts empty", store.pendingDrafts().isEmpty())
+            assertTrue("The isolated Web fixture starts unlocked", !store.isLocked())
+            context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            SkinPackageManager(context).select("powercal-clear-default")
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides context) {
+                        PowerCalTheme { PowerCalApp(store) }
+                    }
+                }
+            }
+
+            compose.waitUntil(30_000) {
+                compose.runOnUiThread {
+                    web = findWebView(compose.activity.findViewById(android.R.id.content))
+                }
+                web != null
+            }
+            val view = requireNotNull(web)
+            awaitJs(view, "!!window.PowerCalSkin&&!!document.querySelector('[data-action=\\\"openDeck\\\"]')")
+            awaitJs(view, "document.querySelector('#pendingCounter')?.textContent===''||" +
+                "document.querySelector('#pendingCounter')?.textContent==='0'")
+            compose.waitUntil(30_000) {
+                var ready = false
+                compose.runOnIdle { ready = WebSkinBridgeRuntime.state().optBoolean("hostDataReady") }
+                ready
+            }
+            val emptyBefore = storeSnapshot(store)
+            val emptyRecords = store.all()
+            tapWebTarget(view, "[data-action='openDeck']")
+            awaitJs(view, "!document.querySelector('#skinSheet').hidden&&!!document.querySelector('.deck-empty-state')")
+            val empty = evaluateObject(view, """(()=>{
+              const card=document.querySelector('.deck-empty-state');
+              const button=card?.querySelector('[data-do="close"]');
+              return {heading:card?.querySelector('h3')?.textContent||null,
+                explanation:card?.querySelector('p')?.textContent||null,
+                returnLabel:button?.textContent.trim()||null,
+                headerCount:document.querySelector('#sheetSubtitle')?.textContent||null,
+                cardBounds:card?.getBoundingClientRect().toJSON()||null,
+                headingBounds:card?.querySelector('h3')?.getBoundingClientRect().toJSON()||null,
+                explanationBounds:card?.querySelector('p')?.getBoundingClientRect().toJSON()||null,
+                buttonBounds:button?.getBoundingClientRect().toJSON()||null,
+                emptyFlag:document.querySelector('.deck-card-surface')?.dataset.empty||null,
+                footerDisplay:getComputedStyle(document.querySelector('.deck-card-surface .sheet-actions')).display,
+                publishVisible:document.querySelector('#sheetSave')?.getClientRects().length>0,
+                viewport:{width:innerWidth,height:innerHeight}}
+            })()""")
+            val webOrigin = IntArray(2)
+            val webSize = AtomicReference<Pair<Int, Int>>()
+            compose.runOnUiThread { view.getLocationOnScreen(webOrigin); webSize.set(view.width to view.height) }
+            val viewport = empty.getJSONObject("viewport")
+            val (webWidth, webHeight) = requireNotNull(webSize.get())
+            val scaleX = webWidth / viewport.getDouble("width")
+            val scaleY = webHeight / viewport.getDouble("height")
+            fun webScreenBounds(key: String): JSONObject {
+                val rect = empty.getJSONObject(key)
+                return JSONObject().put("left", webOrigin[0] + rect.getDouble("left") * scaleX)
+                    .put("top", webOrigin[1] + rect.getDouble("top") * scaleY)
+                    .put("right", webOrigin[0] + rect.getDouble("right") * scaleX)
+                    .put("bottom", webOrigin[1] + rect.getDouble("bottom") * scaleY)
+            }
+            val webScreenGeometry = JSONObject().put("card", webScreenBounds("cardBounds"))
+                .put("heading", webScreenBounds("headingBounds"))
+                .put("explanation", webScreenBounds("explanationBounds"))
+                .put("return", webScreenBounds("buttonBounds"))
+            println("N095_CURRENT_WEB_EMPTY_GEOMETRY=$webScreenGeometry")
+            if (empty.optString("heading") != "没有待处理卡片")
+                parityFailures += "Web empty heading differs from frozen Native"
+            if (empty.optString("explanation") != "所有草稿都已处理。新的自然语言、截图或 AI 建议会重新出现在这里。")
+                parityFailures += "Web empty explanation differs from frozen Native"
+            if (empty.optString("returnLabel") != "返回时间轴")
+                parityFailures += "Web empty card lacks Native return action"
+            if (empty.optString("emptyFlag") != "true")
+                parityFailures += "Web empty Deck was not assigned the non-fanned empty layout"
+            if (empty.optString("footerDisplay") != "none" || empty.optBoolean("publishVisible"))
+                parityFailures += "Web empty Deck still exposes an irrelevant publish footer"
+            val emptyScreenshot = saveDisplayScreenshot("n095-deck-empty-web.png", view)
+            println("N095_DECK_EMPTY_WEB=$empty screenshot=${emptyScreenshot.absolutePath}")
+            assertEquals("Opening the Web empty Deck is read-only", emptyBefore, storeSnapshot(store))
+            assertEquals(emptyRecords, store.all())
+            tapWebTarget(view, "#sheetFields .deck-empty-return")
+            awaitJs(view, "document.querySelector('#skinSheet').hidden")
+            assertEquals("Returning from the empty Deck is read-only", emptyBefore, storeSnapshot(store))
+
+            val fixture = store.newDraft(
+                DraftForm(kind = TemporalKind.MEMO, title = "N095_AI_LOCKED_CARD",
+                    zoneId = ZoneId.systemDefault().id), actor = "native095-deck-parity"
+            )
+            fixtureDraftId = fixture.draftId
+            val session = store.beginAiBatch(
+                reviewed = mapOf(fixture.draftId to fixture.draftVersion),
+                allowedOperations = setOf(DraftOperation.CREATE),
+                sessionId = "N095-WEB-DECK-${UUID.randomUUID()}"
+            )
+            aiSessionId = session.sessionId
+            val lockedBefore = storeSnapshot(store)
+            val lockedRecords = store.all()
+            val lockedDraft = store.pendingDrafts().single { it.draftId == fixture.draftId }
+            tapWebTarget(view, "[data-action='openDeck']")
+            awaitJs(view, "!document.querySelector('#skinSheet').hidden&&" +
+                "document.querySelector('.deck-card-surface')?.dataset.aiLocked==='true'")
+            awaitJs(view, "document.querySelector('.deck-ai-progress')?.textContent.includes(" +
+                "'本次授权 1 张 · 仍待处理 1 张')===true")
+            awaitJs(view, "document.querySelector('.deck-summary-hint')?.textContent==='卡组只读 · 可浏览详情'")
+            val summaryLabel = evaluate(view, "document.querySelector('.deck-summary')?.getAttribute('aria-label')||''")
+            assertTrue("Web accessibility label must announce the read-only state: $summaryLabel",
+                summaryLabel.contains("只读"))
+            tapWebTarget(view, "#sheetFields .deck-summary")
+            awaitJs(view, "!!document.querySelector('#sheetFields input[data-field=\\\"title\\\"]')")
+            val controls = evaluateObject(view, """(()=>{
+              const surface=document.querySelector('.deck-card-surface');
+              const text=Array.from(surface?.querySelectorAll('.sheet-row input,.sheet-row textarea')||[]);
+              const selects=Array.from(surface?.querySelectorAll('.sheet-row select')||[]);
+              const headerStop=document.querySelector('.deck-ai-stop-header');
+              const progressStop=document.querySelector('.deck-ai-progress-stop');
+              const discard=surface?.querySelector('[data-do="discard"]');
+              const publish=document.querySelector('#sheetSave');
+              const kind=surface?.querySelector('[data-field="kind"]');
+              const memoHint=surface?.querySelector('.deck-native-095-memo-hint');
+              const titleRow=surface?.querySelector('[data-field="title"]')?.closest('.sheet-row');
+              const pager=document.querySelector('.sheet-deck-navigation');
+              const rect=e=>{const r=e?.getBoundingClientRect();return r?{x:r.x,y:r.y,width:r.width,height:r.height}:null};
+              return {titleReadOnly:surface?.querySelector('input[data-field="title"]')?.readOnly===true,
+                textReadOnly:text.length>0&&text.every(x=>x.readOnly),
+                selectsDisabled:selects.length>0&&selects.every(x=>x.disabled),
+                discardDisabled:discard?.disabled===true,
+                publishDisabled:publish?.disabled===true,
+                bodyKindFieldAbsent:!kind,
+                headerKind:surface?.querySelector('.deck-card-kind')?.textContent.trim()||'',
+                memoHint:memoHint?.textContent||'',
+                pagerText:pager?.querySelector('span')?.textContent.trim()||'',
+                pagerButtonsDisabled:!!pager&&Array.from(pager.querySelectorAll('button')).length===2&&
+                  Array.from(pager.querySelectorAll('button')).every(x=>x.disabled),
+                titleUsesNativeFloatingLabel:titleRow?.classList.contains('deck-native-095-locked-field')===true,
+                discardDisabledColor:discard?getComputedStyle(discard).backgroundColor:'',
+                publishDisabledColor:publish?getComputedStyle(publish).backgroundColor:'',
+                panelBottomPadding:getComputedStyle(document.querySelector('.sheet-panel')).paddingBottom,
+                footerRowGap:getComputedStyle(document.querySelector('.sheet-actions')).rowGap,
+                expanded:surface?.dataset.expanded||'',
+                geometry:{panel:rect(document.querySelector('.sheet-panel')),
+                  stage:rect(document.querySelector('.deck-stage')),
+                  banner:rect(document.querySelector('.deck-ai-progress')),
+                  search:rect(document.querySelector('.deck-search')),
+                  surface:rect(surface),header:rect(surface?.querySelector('.deck-card-header')),
+                  titleRow:rect(titleRow),titleLabel:rect(titleRow?.querySelector('.sheet-label')),
+                  titleInput:rect(titleRow?.querySelector('input')),memoHint:rect(memoHint),
+                  startRow:rect(surface?.querySelector('[data-field="startText"]')?.closest('.sheet-row')),
+                  endRow:rect(surface?.querySelector('[data-field="endText"]')?.closest('.sheet-row')),
+                  pager:rect(pager),discard:rect(discard),publish:rect(publish),
+                  footer:rect(document.querySelector('.sheet-actions'))},
+                viewport:{width:innerWidth,height:innerHeight,dpr:devicePixelRatio},
+                headerStopVisible:headerStop?.getClientRects().length>0,
+                headerStopEnabled:headerStop?.disabled===false,
+                progressStopVisible:progressStop?.getClientRects().length>0,
+                progressStopEnabled:progressStop?.disabled===false,
+                searchEnabled:!document.querySelector('.deck-search input')?.disabled}
+            })()""")
+            if (!controls.optBoolean("titleReadOnly")) parityFailures += "AI-locked Web title remains editable"
+            if (!controls.optBoolean("textReadOnly")) parityFailures += "AI-locked Web text fields remain editable"
+            if (!controls.optBoolean("selectsDisabled")) parityFailures += "AI-locked Web choices remain enabled"
+            if (!controls.optBoolean("discardDisabled")) parityFailures += "AI-locked Web discard remains enabled"
+            if (!controls.optBoolean("publishDisabled")) parityFailures += "AI-locked Web publish remains enabled"
+            if (!controls.optBoolean("bodyKindFieldAbsent") || controls.optString("headerKind") != "备忘 ▾")
+                parityFailures += "AI-locked Web repeats the Native header kind control in the form body"
+            if (controls.optString("memoHint") != "备忘可完全不指定日期；也可以填连续的自然日区间。")
+                parityFailures += "AI-locked Web memo date guidance differs from Native"
+            if (controls.optString("pagerText") != "1 / 1 · 已暂存" ||
+                !controls.optBoolean("pagerButtonsDisabled"))
+                parityFailures += "AI-locked single-card Web Deck omits the Native disabled 1/1 pager"
+            if (!controls.optBoolean("titleUsesNativeFloatingLabel"))
+                parityFailures += "AI-locked Web form does not use the frozen Native floating-label structure"
+            if (controls.optString("discardDisabledColor") != "rgb(222, 222, 222)" ||
+                controls.optString("publishDisabledColor") != "rgb(222, 222, 222)")
+                parityFailures += "AI-locked Web actions do not use the Native disabled button surface"
+            if (!controls.optBoolean("headerStopVisible") || !controls.optBoolean("headerStopEnabled"))
+                parityFailures += "AI-locked Web header does not expose the Native stop action"
+            if (!controls.optBoolean("progressStopVisible") || !controls.optBoolean("progressStopEnabled"))
+                parityFailures += "AI-locked Web progress banner does not expose the Native stop action"
+            if (!controls.optBoolean("searchEnabled")) parityFailures += "AI-locked Web search was unnecessarily disabled"
+            val lockedScreenshot = saveDisplayScreenshot("n095-deck-ai-locked-web.png", view)
+            val viewportInfo = controls.getJSONObject("viewport")
+            val (lockedWebWidth, lockedWebHeight) = requireNotNull(webSize.get())
+            val lockedWebScaleX = lockedWebWidth / viewportInfo.getDouble("width")
+            val lockedWebScaleY = lockedWebHeight / viewportInfo.getDouble("height")
+            val webGeometry = controls.getJSONObject("geometry")
+            assertEquals("Frozen Native action controls use a 48dp minimum height",
+                48.0, webGeometry.getJSONObject("discard").getDouble("height"), 0.1)
+            assertEquals("Frozen Native action controls use a 48dp minimum height",
+                48.0, webGeometry.getJSONObject("publish").getDouble("height"), 0.1)
+            assertEquals("Deck bottom inset matches Native's navigation padding plus 8dp",
+                "8px", controls.optString("panelBottomPadding"))
+            assertEquals("Native stacks the pager directly above the action row",
+                "0px", controls.optString("footerRowGap"))
+            fun webScreenRect(key: String): JSONObject {
+                val bounds = webGeometry.getJSONObject(key)
+                return JSONObject().put("left", webOrigin[0] + bounds.getDouble("x") * lockedWebScaleX)
+                    .put("top", webOrigin[1] + bounds.getDouble("y") * lockedWebScaleY)
+                    .put("right", webOrigin[0] + (bounds.getDouble("x") + bounds.getDouble("width")) * lockedWebScaleX)
+                    .put("bottom", webOrigin[1] + (bounds.getDouble("y") + bounds.getDouble("height")) * lockedWebScaleY)
+            }
+            val lockedWebScreenGeometry = JSONObject()
+                .put("header", webScreenRect("header"))
+                .put("title", webScreenRect("titleInput"))
+                .put("memoHint", webScreenRect("memoHint"))
+                .put("start", webScreenRect("startRow"))
+                .put("end", webScreenRect("endRow"))
+                .put("pager", webScreenRect("pager"))
+                .put("discard", webScreenRect("discard"))
+                .put("publish", webScreenRect("publish"))
+            println("N095_DECK_AI_LOCKED_WEB=$controls screenGeometry=$lockedWebScreenGeometry screenshot=${lockedScreenshot.absolutePath}")
+
+            val hostState = WebSkinBridgeRuntime.state().optJSONObject("editing")
+                ?.optJSONObject("deck") ?: throw AssertionError("Host Deck state missing")
+            val request = "n095_locked_discard_${UUID.randomUUID()}"
+            val args = JSONObject().put("draftId", fixture.draftId).put("draftVersion", fixture.draftVersion)
+            val sent = evaluate(view, """(()=>{
+              window.__n095Replies=window.__n095Replies||{};
+              if(!window.__n095CaptureInstalled){
+                const original=window.PowerCalEdit.onResult;
+                window.PowerCalEdit.onResult=function(reply){
+                  if(reply?.requestId?.startsWith('n095_locked_')){window.__n095Replies[reply.requestId]=reply;return}
+                  original(reply)
+                };
+                window.__n095CaptureInstalled=true;
+              }
+              return window.PowerCalSkin.sendCommand("deck.discard",${JSONObject.quote(request)},
+                JSON.parse(${JSONObject.quote(args.toString())}))===true
+            })()""")
+            assertEquals("The direct Host command reaches the normal bridge", "true", sent)
+            awaitJs(view, "window.__n095Replies?.[${JSONObject.quote(request)}]?.status==='locked'")
+            val reply = evaluateObject(view, "window.__n095Replies[${JSONObject.quote(request)}]")
+            assertEquals("Host refuses destructive action while the AI batch owns the Deck", "locked",
+                reply.optString("status"))
+            assertTrue("AI lock is still owned by the original batch", store.isLocked())
+            assertEquals(lockedBefore, storeSnapshot(store))
+            assertEquals(lockedRecords, store.all())
+            assertEquals(lockedDraft, store.pendingDrafts().single { it.draftId == fixture.draftId })
+            tapWebTarget(view, ".deck-ai-stop-header")
+            val stopTrace = evaluate(view, "JSON.stringify(window.__n095TouchTrace||[])")
+            val stopState = WebSkinBridgeRuntime.state()
+            println("N095_WEB_STOP_ACTION_TRACE=$stopTrace page=${stopState.optString("page")} " +
+                "phase=${stopState.optJSONObject("aiBatch")?.optString("phase")} " +
+                "hostNotice=${stopState.optString("hostNotice")} locked=${store.isLocked()}")
+            compose.waitUntil(10_000) {
+                var phase = ""
+                compose.runOnIdle {
+                    phase = WebSkinBridgeRuntime.state().optJSONObject("aiBatch")?.optString("phase").orEmpty()
+                }
+                phase == "CANCEL_REQUESTED"
+            }
+            assertTrue("The Native stop affordance requests cancellation through the Host", store.isLocked())
+            assertEquals("Stopping does not rewrite the locked draft", lockedDraft,
+                store.pendingDrafts().single { it.draftId == fixture.draftId })
+            assertEquals("Stopping does not create a formal event", lockedRecords, store.all())
+            tapWebTarget(view, "#sheetClose")
+            awaitJs(view, "document.querySelector('#skinSheet').hidden")
+            assertEquals("Closing the read-only Deck does not write", lockedBefore, storeSnapshot(store))
+            assertTrue("Host lock remains active after browsing", store.isLocked())
+            assertEquals("Deck still describes its original draft", lockedDraft,
+                store.pendingDrafts().single { it.draftId == fixture.draftId })
+            assertTrue("Parity findings: ${parityFailures.joinToString("; ")}", parityFailures.isEmpty())
+        } finally {
+            aiSessionId?.let { sessionId ->
+                if (store.isLocked()) runCatching {
+                    store.finishAiBatch(sessionId, state = PowerStore.AiState.CANCELLED)
+                }
+            }
+            fixtureDraftId?.let { id ->
+                if (!store.isLocked() && store.pendingDrafts().any { it.draftId == id }) store.discard(id)
+            }
+            compose.runOnUiThread { compose.activity.setContent { }; PowerCalSkinRegistry.reset() }
+            compose.waitForIdle()
+            store.close()
+            context.deleteDatabase(databaseName)
+            listOf("powercal-onboarding", "powercal-skin-choice", "powercal-skin-registry",
+                "powercal-ui", "powercal-profile", "powercal-ai", "powercal-file-ai-consent")
+                .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+            File(storage.cacheDir, namespace).deleteRecursively()
+        }
+    }
+
+    @Test
+    fun currentNativeDraftDeckAiLockedStateRemainsReadOnly() {
+        val storage = compose.activity.applicationContext
+        val namespace = "n095-native-deck-lock-${UUID.randomUUID()}"
+        val context = IsolatedAppContext(compose.activity, storage, namespace)
+        val databaseName = "deck.db"
+        val store = PowerStore(context, databaseName)
+        var fixtureDraftId: Long? = null
+        var aiSessionId: String? = null
+        try {
+            store.readableDatabase
+            context.getSharedPreferences("powercal-onboarding", Context.MODE_PRIVATE)
+                .edit().putBoolean("system-calendar-import-asked", true).commit()
+            assertTrue("Native selection is isolated in the test preference namespace",
+                context.getSharedPreferences("powercal-skin-choice", Context.MODE_PRIVATE)
+                    .edit().putString("selected", "powercal-default").commit())
+            resetSkinRegistryIfPresent(context)
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    CompositionLocalProvider(LocalContext provides context) {
+                        PowerCalTheme { PowerCalApp(store) }
+                    }
+                }
+            }
+            compose.waitUntil(30_000) {
+                compose.onAllNodes(hasContentDescription("今日 · 复位为全天"))
+                    .fetchSemanticsNodes().isNotEmpty()
+            }
+            val emptyBefore = storeSnapshot(store)
+            val emptyRecords = store.all()
+            compose.onNode(hasContentDescription("待处理", substring = true) and hasClickAction())
+                .performTouchInput { click() }
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText("没有待处理卡片").fetchSemanticsNodes().isNotEmpty()
+            }
+            fun nativeTextBounds(label: String): JSONObject {
+                val bounds = compose.onNodeWithText(label).fetchSemanticsNode().boundsInRoot
+                val origin = IntArray(2)
+                compose.activity.findViewById<View>(android.R.id.content).getLocationOnScreen(origin)
+                return JSONObject().put("left", origin[0] + bounds.left)
+                    .put("top", origin[1] + bounds.top).put("right", origin[0] + bounds.right)
+                    .put("bottom", origin[1] + bounds.bottom)
+            }
+            val nativeEmptyGeometry = JSONObject()
+                .put("heading", nativeTextBounds("没有待处理卡片"))
+                .put("explanation", nativeTextBounds("所有草稿都已处理。新的自然语言、截图或 AI 建议会重新出现在这里。"))
+                .put("return", nativeTextBounds("返回时间轴"))
+            val emptyScreenshot = saveNativeDisplayScreenshot("n095-deck-empty-native-current.png")
+            println("N095_CURRENT_NATIVE_EMPTY geometry=$nativeEmptyGeometry screenshot=${emptyScreenshot.absolutePath}")
+            assertEquals("Opening the current Native empty Deck does not write", emptyBefore, storeSnapshot(store))
+            assertEquals(emptyRecords, store.all())
+            compose.onNodeWithText("返回时间轴").performTouchInput { click() }
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText("没有待处理卡片").fetchSemanticsNodes().isEmpty()
+            }
+            assertEquals("Returning from the current Native empty Deck does not write", emptyBefore, storeSnapshot(store))
+
+            val fixture = store.newDraft(
+                DraftForm(kind = TemporalKind.MEMO, title = "N095_AI_LOCKED_CARD",
+                    zoneId = ZoneId.systemDefault().id), actor = "native095-deck-parity"
+            )
+            fixtureDraftId = fixture.draftId
+            val session = store.beginAiBatch(
+                reviewed = mapOf(fixture.draftId to fixture.draftVersion),
+                allowedOperations = setOf(DraftOperation.CREATE),
+                sessionId = "N095-NATIVE-DECK-${UUID.randomUUID()}"
+            )
+            aiSessionId = session.sessionId
+            val lockedBefore = storeSnapshot(store)
+            val lockedRecords = store.all()
+            val lockedDraft = store.pendingDrafts().single { it.draftId == fixture.draftId }
+            compose.onNode(hasContentDescription("待处理", substring = true) and hasClickAction())
+                .performTouchInput { click() }
+            compose.waitUntil(15_000) {
+                compose.onAllNodesWithText("卡组只读 · 可浏览详情").fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithText("只读").assertExists()
+            compose.onNodeWithText("丢弃").assertIsNotEnabled()
+            compose.onNodeWithText("发布").assertIsNotEnabled()
+            compose.onNodeWithText("卡组只读 · 可浏览详情").performTouchInput { click() }
+            compose.waitUntil(10_000) {
+                compose.onAllNodes(hasText("N095_AI_LOCKED_CARD") and hasSetTextAction())
+                    .fetchSemanticsNodes().isNotEmpty() ||
+                    compose.onAllNodesWithText("N095_AI_LOCKED_CARD").fetchSemanticsNodes().isNotEmpty()
+            }
+            assertTrue("Native AI-locked title is not editable",
+                compose.onAllNodes(hasText("N095_AI_LOCKED_CARD") and hasSetTextAction())
+                    .fetchSemanticsNodes().isEmpty())
+            val nativeAiGeometry = JSONObject()
+                .put("headerKind", nativeTextBounds("备忘 ▾"))
+                .put("titleLabel", nativeTextBounds("标题"))
+                .put("titleField", nativeTextBounds("N095_AI_LOCKED_CARD"))
+                .put("memoHint", nativeTextBounds("备忘可完全不指定日期；也可以填连续的自然日区间。"))
+                .put("startLabel", nativeTextBounds("开始日期（可选，yyyy-MM-dd）"))
+                .put("endLabel", nativeTextBounds("结束日期（可选，含当天）"))
+                .put("pager", nativeTextBounds("1 / 1 · 已暂存"))
+                .put("discard", nativeTextBounds("丢弃"))
+                .put("publish", nativeTextBounds("发布"))
+            val screenshot = saveNativeDisplayScreenshot("n095-deck-ai-locked-native.png")
+            assertEquals(lockedBefore, storeSnapshot(store))
+            assertEquals(lockedRecords, store.all())
+            assertEquals(lockedDraft, store.pendingDrafts().single { it.draftId == fixture.draftId })
+            println("N095_DECK_AI_LOCKED_NATIVE geometry=$nativeAiGeometry screenshot=${screenshot.absolutePath} counts=$lockedBefore")
+        } finally {
+            aiSessionId?.let { sessionId ->
+                if (store.isLocked()) runCatching {
+                    store.finishAiBatch(sessionId, state = PowerStore.AiState.CANCELLED)
+                }
+            }
+            fixtureDraftId?.let { id ->
+                if (!store.isLocked() && store.pendingDrafts().any { it.draftId == id }) store.discard(id)
+            }
+            compose.runOnUiThread { compose.activity.setContent { }; resetSkinRegistryIfPresent(context) }
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            store.close()
+            context.deleteDatabase(databaseName)
+            listOf("powercal-onboarding", "powercal-skin-choice", "powercal-skin-registry",
+                "powercal-ui", "powercal-profile", "powercal-ai", "powercal-file-ai-consent")
+                .forEach { storage.deleteSharedPreferences("$namespace-$it") }
+            File(storage.cacheDir, namespace).deleteRecursively()
+        }
     }
 
     @Test
